@@ -128,6 +128,37 @@ class CustomsDeclarationGenerator:
             alloc[sku] = total_ship * prop
         return alloc
 
+    # ─── shipping allocation per ticket ─────────────────────────────────
+
+    def _shipping_alloc_by_group(
+        self, ship_alloc: Dict[str, float]
+    ) -> Dict[int, Dict[str, float]]:
+        """
+        Split each SKU's global shipping cost across selected tickets
+        proportionally by quantity.
+        {group_idx: {contract_sku: allocated_shipping_rmb}}
+        """
+        totals = {}
+        group_qtys = {}
+        for gi in self.selected:
+            gq = self._group_qty(gi)
+            group_qtys[gi] = gq
+            for sku, q in gq.items():
+                totals[sku] = totals.get(sku, 0) + q
+
+        result = {}
+        for gi in self.selected:
+            result[gi] = {}
+            for item in self.items:
+                sku = sku_key(item)
+                tq = totals.get(sku, 0)
+                gq = group_qtys[gi].get(sku, 0)
+                if tq > 0 and gq > 0:
+                    result[gi][sku] = ship_alloc.get(sku, 0) * (gq / tq)
+                else:
+                    result[gi][sku] = 0
+        return result
+
     # ─── amount allocation across tickets ──────────────────────────────
 
     def _amount_alloc(self) -> Dict[int, Dict[str, float]]:
@@ -161,6 +192,7 @@ class CustomsDeclarationGenerator:
     def generate(self) -> str:
         total_gross, total_vol, chargeable, total_ship = self._chargeable()
         ship_alloc = self._shipping_alloc(total_ship, total_vol, total_gross)
+        ship_alloc_by_group = self._shipping_alloc_by_group(ship_alloc)
         amt_alloc = self._amount_alloc()
 
         cno = self.contract.get('contract_no', 'UNKNOWN')
@@ -174,11 +206,12 @@ class CustomsDeclarationGenerator:
 
             tq = self._group_qty(gi)
             ta = amt_alloc[gi]
+            sa = ship_alloc_by_group[gi]
 
             # 1) Export contract
             f1 = gen_export_contract(
                 items=self.items, contract=self.contract, kb=self.kb,
-                cno=cno, suffix=suffix, tq=tq, ta=ta, ship_alloc=ship_alloc,
+                cno=cno, suffix=suffix, tq=tq, ta=ta, ship_alloc=sa,
                 total_gross=total_gross, total_vol=total_vol,
                 chargeable=chargeable, total_ship=total_ship,
                 rate=self.rate, ship_rate=self.ship_rate, out_dir=self.out_dir,
@@ -188,7 +221,7 @@ class CustomsDeclarationGenerator:
             # 2) IV & PL
             f2 = gen_iv_pl(
                 items=self.items, kb=self.kb,
-                cno=cno, suffix=suffix, tq=tq, ta=ta, ship_alloc=ship_alloc,
+                cno=cno, suffix=suffix, tq=tq, ta=ta, ship_alloc=sa,
                 rate=self.rate, out_dir=self.out_dir,
             )
             files.append(os.path.basename(f2))
@@ -196,7 +229,7 @@ class CustomsDeclarationGenerator:
             # 3) Declaration draft
             f3 = gen_declaration(
                 items=self.items, contract=self.contract, kb=self.kb,
-                cno=cno, suffix=suffix, tq=tq, ta=ta, ship_alloc=ship_alloc,
+                cno=cno, suffix=suffix, tq=tq, ta=ta, ship_alloc=sa,
                 total_ship=total_ship, rate=self.rate,
                 price_term=self.price_term, out_dir=self.out_dir,
             )
@@ -208,6 +241,7 @@ class CustomsDeclarationGenerator:
         for gi in self.selected:
             tq = self._group_qty(gi)
             ta = amt_alloc[gi]
+            sa = ship_alloc_by_group[gi]
             for item in self.items:
                 sku = sku_key(item)
                 q = tq.get(sku, 0)
@@ -215,7 +249,7 @@ class CustomsDeclarationGenerator:
                 all_qty[sku] = all_qty.get(sku, 0) + q
                 if q > 0:
                     tax_excl = a / 1.13
-                    total_usd += (tax_excl + ship_alloc.get(sku, 0)) / self.rate
+                    total_usd += (tax_excl + sa.get(sku, 0)) / self.rate
 
         total_boxes = 0
         total_nw = 0.0
@@ -230,6 +264,20 @@ class CustomsDeclarationGenerator:
                 total_nw += item.get('net_weight_kg', 0) * bx
                 total_gw += item.get('gross_weight_kg', 0) * bx
 
+        # Total shipping across all selected tickets
+        total_ship_selected = sum(
+            sa.get(sku_key(item), 0)
+            for gi in self.selected
+            for item in self.items
+            for sa in [ship_alloc_by_group[gi]]
+        )
+        total_amt_excl = sum(
+            amt_alloc[gi].get(sku_key(item), 0) / 1.13
+            for gi in self.selected
+            for item in self.items
+            if amt_alloc[gi].get(sku_key(item), 0) > 0
+        )
+
         summary = {
             'groups_generated': group_names,
             'files': files,
@@ -239,7 +287,7 @@ class CustomsDeclarationGenerator:
                 'total_boxes': total_boxes,
                 'total_gross_weight': round(total_gw, 1),
                 'total_net_weight': round(total_nw, 1),
-                'exchange_rate_check': round(total_usd * self.rate / (sum(amt_alloc[self.selected[0]].values()) / 1.13 + total_ship), 4) if total_usd > 0 else 0,
+                'exchange_rate_check': round((total_amt_excl + total_ship_selected) / total_usd, 4) if total_usd > 0 else 0,
                 'chargeable_weight': round(chargeable, 2),
                 'total_shipping_rmb': round(total_ship, 2),
             },
