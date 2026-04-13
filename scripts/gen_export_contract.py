@@ -7,7 +7,7 @@ Generate Export Contract (出货合同) Excel document.
 import os
 from typing import Dict, List, Any, Tuple
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, Border, Side
+from openpyxl.styles import Alignment, Font, Border, Side, PatternFill
 from openpyxl.utils import get_column_letter
 
 from helpers import get_lwh, sku_key
@@ -452,6 +452,27 @@ def gen_export_contract(
     # Set row heights for blank/signature rows
     for r in range(terms_start + len(contract_terms), sig_start + 4):
         ws.row_dimensions[r].height = 20
+
+    # ══════════════════════════════════════════════════════════════════
+    # GRAY BACKGROUND:
+    #   1) columns M (13) and beyond — all rows
+    #   2) "盖章" row (sig_start+2) and below — all columns
+    # ══════════════════════════════════════════════════════════════════
+    gray_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid')
+    stamp_row = sig_start + 2 + 1  # first row AFTER "盖章："
+    max_row = ws.max_row
+    max_col = ws.max_column
+    if max_col < 19:
+        max_col = 19
+    for r in range(1, max_row + 1):
+        if r >= stamp_row:
+            # "盖章" row and below: gray for ALL columns
+            for c in range(1, max_col + 1):
+                ws.cell(row=r, column=c).fill = gray_fill
+        else:
+            # Above "盖章": gray only for columns M and beyond
+            for c in range(13, max_col + 1):
+                ws.cell(row=r, column=c).fill = gray_fill
 
     fn = f'【{cno}】{suffix}出货合同.xlsx'
     fp = os.path.join(out_dir, fn)
