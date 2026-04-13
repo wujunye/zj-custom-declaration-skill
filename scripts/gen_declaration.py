@@ -174,10 +174,10 @@ def gen_declaration(
     ws['G4'].border = Border(bottom=thin_side, left=thin_side)
     ws.merge_cells('G4:I4')
     ws['K4'] = ''
-    ws['K4'].border = Border(bottom=thin_side)
+    ws['K4'].border = Border(bottom=thin_side, left=thin_side, right=thin_side)
     ws.merge_cells('K4:N4')
     ws['O4'] = ''
-    ws['O4'].border = Border(bottom=thin_side)
+    ws['O4'].border = Border(bottom=thin_side, right=Side(style='medium'))
     ws.merge_cells('O4:S4')
 
     # Row 5-6: 境外收货人
@@ -207,7 +207,13 @@ def gen_declaration(
     ws['K5'].alignment = label_align
     ws['K5'].border = Border(top=thin_side, left=thin_side)
     ws.merge_cells('L5:N5')
+    ws['O5'] = ''
+    ws['O5'].font = label_font
+    ws['O5'].alignment = label_align
+    ws['O5'].border = Border(top=thin_side, left=thin_side)
     ws.merge_cells('O5:P5')
+    ws['Q5'] = ''
+    ws['Q5'].border = Border(top=thin_side, right=Side(style='medium'))
     ws.merge_cells('Q5:S5')
 
     # Row 6: values
@@ -225,10 +231,10 @@ def gen_declaration(
     ws['G6'].border = Border(bottom=thin_side, left=thin_side)
     ws.merge_cells('G6:J6')
     ws['K6'] = ''
-    ws['K6'].border = Border(bottom=thin_side)
+    ws['K6'].border = Border(bottom=thin_side, left=thin_side, right=thin_side)
     ws.merge_cells('K6:N6')
     ws['O6'] = ''
-    ws['O6'].border = Border(bottom=thin_side)
+    ws['O6'].border = Border(bottom=thin_side, right=Side(style='medium'))
     ws.merge_cells('O6:S6')
 
     # Row 7-8: 生产销售单位
@@ -263,7 +269,13 @@ def gen_declaration(
     ws['K7'].font = label_font
     ws['K7'].alignment = label_align
     ws['K7'].border = Border(top=thin_side, left=thin_side)
+    ws['O7'] = ''
+    ws['O7'].font = label_font
+    ws['O7'].alignment = label_align
+    ws['O7'].border = Border(top=thin_side, left=thin_side)
     ws.merge_cells('L7:N7')
+    ws['P7'] = ''
+    ws['P7'].border = Border(top=thin_side, right=Side(style='medium'))
     ws.merge_cells('P7:S7')
 
     # Row 8: values
@@ -282,11 +294,13 @@ def gen_declaration(
     ws['G8'].alignment = value_align_left
     ws['G8'].border = Border(bottom=thin_side, left=thin_side)
     ws.merge_cells('G8:I8')
+    ws['J8'] = ''
+    ws['J8'].border = Border(bottom=thin_side)
     ws['K8'] = ''
-    ws['K8'].border = Border(bottom=thin_side)
+    ws['K8'].border = Border(bottom=thin_side, left=thin_side, right=thin_side)
     ws.merge_cells('K8:N8')
     ws['O8'] = ''
-    ws['O8'].border = Border(bottom=thin_side)
+    ws['O8'].border = Border(bottom=thin_side, right=Side(style='medium'))
     ws.merge_cells('O8:S8')
 
     # Row 9-10: 合同协议号
@@ -353,7 +367,7 @@ def gen_declaration(
     ws['K10'].border = Border(bottom=thin_side, left=thin_side, right=thin_side)
     ws.merge_cells('K10:N10')
     ws['O10'] = ''
-    ws['O10'].border = Border(bottom=thin_side)
+    ws['O10'].border = Border(bottom=thin_side, right=Side(style='medium'))
     ws.merge_cells('O10:S10')
 
     # Row 11-12: 包装/件数/毛重/运费
@@ -398,6 +412,8 @@ def gen_declaration(
     ws['K11'].font = label_font
     ws['K11'].alignment = label_align
     ws['K11'].border = Border(top=thin_side, left=thin_side)
+    ws['L11'] = ''
+    ws['L11'].border = Border(top=thin_side, right=thin_side)
     ws.merge_cells('L11:M11')
 
     ws['N11'] = '保费'
@@ -410,6 +426,8 @@ def gen_declaration(
     ws['Q11'].font = label_font
     ws['Q11'].alignment = label_align
     ws['Q11'].border = Border(top=thin_side, left=thin_side)
+    ws['R11'] = ''
+    ws['R11'].border = Border(top=thin_side, right=Side(style='medium'))
     ws.merge_cells('R11:S11')
 
     # Compute PL totals for the header
@@ -482,10 +500,16 @@ def gen_declaration(
     ws['A13'].font = label_font
     ws['A13'].alignment = label_align
     ws['A13'].border = Border(top=thin_side, left=Side(style='medium'))
+    ws['C13'] = ''
+    ws['C13'].border = Border(top=thin_side, right=Side(style='medium'))
     ws.merge_cells('C13:S13')
 
     # Row 14
+    ws['A14'] = ''
+    ws['A14'].border = Border(bottom=thin_side, left=Side(style='medium'))
     ws.merge_cells('A14:C14')
+    ws['D14'] = ''
+    ws['D14'].border = Border(bottom=thin_side, right=Side(style='medium'))
     ws.merge_cells('D14:S14')
 
     # Row 15
@@ -493,6 +517,8 @@ def gen_declaration(
     ws['A15'].font = label_font
     ws['A15'].alignment = label_align
     ws['A15'].border = Border(left=Side(style='medium'))
+    ws['C15'] = ''
+    ws['C15'].border = Border(right=Side(style='medium'))
     ws.merge_cells('C15:S15')
 
     # Row 16
@@ -500,11 +526,17 @@ def gen_declaration(
     ws['A16'].font = label_font
     ws['A16'].alignment = label_align
     ws['A16'].border = Border(left=Side(style='medium'))
+    ws['B16'] = ''
+    ws['B16'].border = Border(right=Side(style='medium'))
     ws.merge_cells('B16:S16')
 
     # Row 17: section header
+    ws['A17'] = ''
+    ws['A17'].border = Border(left=Side(style='medium'))
     ws.merge_cells('A17:K17')
     ws.merge_cells('L17:N17')
+    ws['O17'] = ''
+    ws['O17'].border = Border(right=Side(style='medium'))
     ws.merge_cells('O17:S17')
 
     # Row 18: spacer row with specific formatting
