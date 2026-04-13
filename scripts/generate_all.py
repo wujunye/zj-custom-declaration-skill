@@ -901,9 +901,23 @@ class CustomsDeclarationGenerator:
         for col_letter, width in col_widths.items():
             ws.column_dimensions[col_letter].width = width
 
-        # Set row heights
+        # Set row heights (matching example template)
         ws.row_dimensions[1].height = 25.5
         ws.row_dimensions[2].height = 12.75
+        ws.row_dimensions[3].height = 12.0
+        ws.row_dimensions[4].height = 14.25
+        ws.row_dimensions[5].height = 12.0
+        ws.row_dimensions[7].height = 12.0
+        ws.row_dimensions[8].height = 14.25
+        ws.row_dimensions[9].height = 12.0
+        ws.row_dimensions[10].height = 14.25
+        ws.row_dimensions[11].height = 12.0
+        ws.row_dimensions[12].height = 14.25
+        ws.row_dimensions[13].height = 12.0
+        ws.row_dimensions[14].height = 12.75
+        ws.row_dimensions[15].height = 12.0
+        ws.row_dimensions[17].height = 14.25
+        ws.row_dimensions[18].height = 14.25
 
         # Title
         ws.merge_cells('A1:S1')
@@ -917,26 +931,29 @@ class CustomsDeclarationGenerator:
             top=Side(style='thin'), bottom=Side(style='thin')
         )
 
-        # Row 2
+        # Row 2 (no borders, right-aligned, with merge cells)
+        ws.merge_cells('A2:B2')
         c_a2 = ws['A2']
         c_a2.value = '预录入编号：'
         c_a2.font = Font(name='宋体', size=10)
-        c_a2.alignment = Alignment(horizontal='center', vertical='center')
-        c_a2.border = thin_border
+        c_a2.alignment = Alignment(horizontal='right', vertical='center')
+        ws.merge_cells('C2:E2')
 
         ws['F2'] = '申报口岸:'
         ws['F2'].font = Font(name='宋体', size=10)
-        ws['F2'].alignment = Alignment(horizontal='center', vertical='center')
-        ws['F2'].border = thin_border
+        ws['F2'].alignment = Alignment(horizontal='right', vertical='center')
+        ws.merge_cells('G2:H2')
 
         ws['I2'] = '海关编号:'
         ws['I2'].font = Font(name='宋体', size=10)
-        ws['I2'].alignment = Alignment(horizontal='center', vertical='center')
-        ws['I2'].border = thin_border
+        ws['I2'].alignment = Alignment(horizontal='right', vertical='center')
+        ws.merge_cells('J2:N2')
 
         # Define border styles
         label_font = Font(name='宋体', size=10)
+        label_font_red = Font(name='宋体', size=10, color='FF0000')
         value_font = Font(name='宋体', size=12, bold=True)
+        value_font_red = Font(name='宋体', size=12, bold=True, color='FF0000')
         value_font_11 = Font(name='宋体', size=11, bold=True)
         label_align = Alignment(vertical='center')
         label_align_left = Alignment(horizontal='left', vertical='center')
@@ -957,7 +974,7 @@ class CustomsDeclarationGenerator:
         ws['C3'].border = Border(top=Side(style='medium'), right=thin_side)
         ws.merge_cells('C3:D3')
         ws['E3'] = '出境关别'
-        ws['E3'].font = label_font
+        ws['E3'].font = label_font_red
         ws['E3'].alignment = label_align
         ws['E3'].border = Border(top=Side(style='medium'), left=thin_side)
         ws['F3'] = '(    )'
@@ -980,6 +997,21 @@ class CustomsDeclarationGenerator:
         ws['O3'].border = Border(top=Side(style='medium'), left=thin_side)
         ws.merge_cells('P3:S3')
 
+        # Ensure continuous medium top border across ALL cells in Row 3
+        # (merged cells need individual border settings for openpyxl to render properly)
+        for col_idx in range(1, 20):  # columns A(1) to S(19)
+            cell = ws.cell(row=3, column=col_idx)
+            existing = cell.border
+            cell.border = Border(
+                top=Side(style='medium'),
+                left=existing.left if existing.left and existing.left.style else None,
+                right=existing.right if existing.right and existing.right.style else None,
+                bottom=existing.bottom if existing.bottom and existing.bottom.style else None,
+            )
+        # Right edge of Row 3 needs medium right border
+        s3 = ws['S3']
+        s3.border = Border(top=Side(style='medium'), right=Side(style='medium'))
+
         # Row 4: values
         ws['A4'] = '深圳市艾进贸易有限公司'
         ws['A4'].font = value_font
@@ -1001,7 +1033,7 @@ class CustomsDeclarationGenerator:
 
         # Row 5-6: 境外收货人 (merges: A5:B5, G5:J5, L5:N5, O5:P5, Q5:S5)
         ws['A5'] = '境外收货人'
-        ws['A5'].font = label_font
+        ws['A5'].font = label_font_red
         ws['A5'].alignment = label_align_left
         ws['A5'].border = Border(top=thin_side, left=Side(style='medium'))
         ws.merge_cells('A5:B5')
@@ -1026,6 +1058,8 @@ class CustomsDeclarationGenerator:
         ws['K5'].alignment = label_align
         ws['K5'].border = Border(top=thin_side, left=thin_side)
         ws.merge_cells('L5:N5')
+        ws.merge_cells('O5:P5')
+        ws.merge_cells('Q5:S5')
 
         # Row 6: values
         ws['A6'] = 'ZEATALINE INTERNATIONAL TRADING'
@@ -1139,7 +1173,7 @@ class CustomsDeclarationGenerator:
         ws['L9'].border = Border(top=thin_side, right=thin_side)
         ws.merge_cells('L9:N9')
         ws['O9'] = '离境口岸'
-        ws['O9'].font = label_font
+        ws['O9'].font = label_font_red
         ws['O9'].alignment = label_align
         ws['O9'].border = Border(top=thin_side, left=thin_side)
         ws['P9'] = '(    )'
@@ -1155,7 +1189,7 @@ class CustomsDeclarationGenerator:
         ws['A10'].border = Border(bottom=thin_side, left=Side(style='medium'), right=thin_side)
         ws.merge_cells('A10:D10')
         ws['E10'] = '美国'
-        ws['E10'].font = value_font
+        ws['E10'].font = value_font_red
         ws['E10'].alignment = value_align_left
         ws['E10'].border = Border(bottom=thin_side, left=thin_side, right=thin_side)
         ws.merge_cells('E10:F10')
@@ -1205,6 +1239,11 @@ class CustomsDeclarationGenerator:
         ws['I11'].font = label_font
         ws['I11'].alignment = Alignment(horizontal='right', vertical='center')
         ws['I11'].border = Border(top=thin_side, left=thin_side)
+
+        ws['J11'] = '(  )'
+        ws['J11'].font = label_font
+        ws['J11'].alignment = label_align
+        ws['J11'].border = Border(top=thin_side)
 
         ws['K11'] = '运费'
         ws['K11'].font = label_font
@@ -1277,11 +1316,24 @@ class CustomsDeclarationGenerator:
         ws['L12'].border = Border(bottom=thin_side, right=thin_side)
         ws.merge_cells('L12:M12')
 
+        ws['N12'] = None
+        ws['N12'].font = value_font
+        ws['N12'].alignment = value_align_left
+        ws['N12'].border = Border(bottom=thin_side, right=thin_side)
+        ws.merge_cells('N12:P12')
+
+        ws['Q12'] = None
+        ws['Q12'].font = value_font
+        ws['Q12'].alignment = value_align_left
+        ws['Q12'].border = Border(bottom=thin_side, left=thin_side, right=Side(style='medium'))
+        ws.merge_cells('Q12:S12')
+
         # Row 13: 随附单证及编号
         ws['A13'] = '随附单证及编号'
         ws['A13'].font = label_font
         ws['A13'].alignment = label_align
         ws['A13'].border = Border(top=thin_side, left=Side(style='medium'))
+        ws.merge_cells('C13:S13')
 
         # Row 14
         ws.merge_cells('A14:C14')
@@ -1306,16 +1358,69 @@ class CustomsDeclarationGenerator:
         ws.merge_cells('L17:N17')
         ws.merge_cells('O17:S17')
 
-        # Row 18: spacer row with medium borders
-        medium_border = Border(
-            left=Side(style='medium'), right=Side(style='medium'),
-            top=Side(style='medium'), bottom=Side(style='medium')
-        )
-        for col in range(1, 20):
-            cell = ws.cell(row=18, column=col)
-            cell.border = medium_border
+        # Row 18: spacer row with specific formatting per cell (matching example)
+        med_tb = Border(top=Side(style='medium'), bottom=Side(style='medium'))
+        med_ltb = Border(left=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='medium'))
+        med_lrtb = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='medium'), bottom=Side(style='medium'))
+        med_ltb_thin = Border(left=Side(style='thin'), top=Side(style='medium'), bottom=Side(style='medium'))
+        med_rtb = Border(right=Side(style='thin'), top=Side(style='medium'), bottom=Side(style='medium'))
+        med_rtb_med = Border(right=Side(style='medium'), top=Side(style='medium'), bottom=Side(style='medium'))
+
+        ws['A18'] = ' '
+        ws['A18'].font = Font(name='宋体', size=11, bold=True)
+        ws['A18'].alignment = label_align
+        ws['A18'].border = med_ltb
+
+        ws['B18'] = ' '
+        ws['B18'].font = Font(name='宋体', size=11, bold=True)
+        ws['B18'].alignment = label_align
+        ws['B18'].border = med_tb
+
+        ws['C18'] = None
+        ws['C18'].font = Font(name='宋体', size=11, bold=True)
+        ws['C18'].alignment = Alignment(horizontal='left', vertical='center')
+        ws['C18'].border = med_lrtb
+
+        ws['D18'] = ' '
+        ws['D18'].font = Font(name='宋体', size=11, bold=True)
+        ws['D18'].alignment = Alignment(horizontal='right', vertical='center')
+        ws['D18'].border = med_ltb_thin
+
+        ws['E18'] = None
+        ws['E18'].font = Font(name='宋体', size=11, bold=True)
+        ws['E18'].alignment = Alignment(horizontal='left', vertical='center')
+        ws['E18'].border = med_lrtb
+
+        ws['F18'] = ' '
+        ws['F18'].font = Font(name='宋体', size=11, bold=True)
+        ws['F18'].alignment = Alignment(horizontal='right', vertical='center')
+        ws['F18'].border = med_tb
+        ws.merge_cells('F18:G18')
+
+        ws['H18'] = None
+        ws['H18'].font = Font(name='宋体', size=11, bold=True)
+        ws['H18'].alignment = Alignment(horizontal='left', vertical='center')
+        ws['H18'].border = med_lrtb
+
+        ws['I18'] = ' '
+        ws['I18'].font = Font(name='宋体', size=11, bold=True)
+        ws['I18'].alignment = Alignment(horizontal='right', vertical='center')
+        ws['I18'].border = med_ltb_thin
+        ws.merge_cells('I18:J18')
+
+        ws['K18'] = ' '
+        ws['K18'].font = Font(name='宋体', size=10, bold=True)
+        ws['K18'].alignment = label_align
+        ws['K18'].border = med_rtb
+
+        ws['L18'] = ' '
+        ws['L18'].font = Font(name='宋体', size=11)
+        ws['L18'].alignment = Alignment(horizontal='center', vertical='center')
+        ws['L18'].border = med_rtb_med
+        ws.merge_cells('L18:S18')
 
         # Row 19: Column headers with merges
+        ws.row_dimensions[19].height = 12.0
         thin_bottom = Border(bottom=Side(style='thin'))
         hdr_font = Font(name='宋体', size=10)
         hdr_align = Alignment(horizontal='center', vertical='center')
@@ -1324,7 +1429,7 @@ class CustomsDeclarationGenerator:
         ws.cell(row=19, column=1).alignment = hdr_align
         ws.cell(row=19, column=1).border = Border(bottom=Side(style='thin'), left=Side(style='thin'))
 
-        ws.cell(row=19, column=2, value='商品编号').font = hdr_font
+        ws.cell(row=19, column=2, value='商品编号').font = Font(name='宋体', size=10, color='FF0000')
         ws.cell(row=19, column=2).alignment = hdr_align
         ws.cell(row=19, column=2).border = thin_bottom
         ws.merge_cells('B19:C19')
@@ -1339,7 +1444,7 @@ class CustomsDeclarationGenerator:
         ws.cell(row=19, column=7).border = thin_bottom
         ws.merge_cells('G19:H19')
 
-        ws.cell(row=19, column=9, value='单价/总价/币制').font = hdr_font
+        ws.cell(row=19, column=9, value='单价/总价/币制').font = Font(name='宋体', size=10, color='FF0000')
         ws.cell(row=19, column=9).alignment = hdr_align
         ws.cell(row=19, column=9).border = thin_bottom
         ws.merge_cells('I19:J19')
@@ -1354,7 +1459,7 @@ class CustomsDeclarationGenerator:
         ws.cell(row=19, column=13).border = thin_bottom
         ws.merge_cells('M19:O19')
 
-        ws.cell(row=19, column=16, value='境内货源地').font = hdr_font
+        ws.cell(row=19, column=16, value='境内货源地').font = Font(name='宋体', size=10, color='FF0000')
         ws.cell(row=19, column=16).alignment = hdr_align
         ws.cell(row=19, column=16).border = thin_bottom
         ws.merge_cells('P19:R19')
@@ -1367,6 +1472,9 @@ class CustomsDeclarationGenerator:
         row = 20
         item_no = 1
         supplier_city = self.contract.get('supplier', {}).get('city', '义乌')
+
+        item_font = Font(name='宋体', size=11)
+        item_font_12 = Font(name='宋体', size=12)
 
         for item in self.items:
             sku = _sku_key(item)
@@ -1384,10 +1492,10 @@ class CustomsDeclarationGenerator:
             info = self._info(sku, item)
             nw_kg = item.get('net_weight_kg', 0) * (qty / (item.get('packing_rate', 1) or 1))
 
-            # Row 1: main info with merges
-            item_font = Font(name='宋体', size=11)
-            item_font_12 = Font(name='宋体', size=12)
+            # Set row heights: row1=14.25, row2&row3=default
+            ws.row_dimensions[row].height = 14.25
 
+            # Row 1: main info with merges
             c1 = ws.cell(row=row, column=1, value=item_no)
             c1.font = item_font
             c1.alignment = Alignment(horizontal='center', vertical='center')
@@ -1462,10 +1570,12 @@ class CustomsDeclarationGenerator:
             ws.cell(row=row, column=13, value='（USA）').font = item_font
             ws.cell(row=row, column=13).alignment = Alignment(horizontal='center', vertical='center')
             ws.merge_cells(f'M{row}:O{row}')
+            ws.merge_cells(f'P{row}:R{row}')
 
             # Row 3: qty in 个 + currency (with bottom borders)
             row += 1
             ws.merge_cells(f'B{row}:C{row}')
+
             c7_r3 = ws.cell(row=row, column=7, value=qty)
             c7_r3.font = item_font
             c7_r3.alignment = Alignment(vertical='center')
@@ -1480,6 +1590,10 @@ class CustomsDeclarationGenerator:
             c9_r3.alignment = Alignment(horizontal='right', vertical='center')
             c9_r3.border = Border(bottom=Side(style='thin'))
             ws.merge_cells(f'I{row}:J{row}')
+
+            ws.merge_cells(f'K{row}:L{row}')
+            ws.merge_cells(f'M{row}:O{row}')
+            ws.merge_cells(f'P{row}:R{row}')
 
             row += 1
             item_no += 1
