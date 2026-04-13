@@ -1,0 +1,280 @@
+---
+name: customs-declaration
+description: |
+  生成跨境电商出口报关全套资料（出口合同、Invoice、Packing List、报关单草稿）。
+  当用户提到"报关单"、"报关资料"、"出口报关"、"customs declaration"、"报关草单"、
+  "装箱单"、"packing list"、"invoice 发票"，或者用户提供了采购合同Excel和亚马逊FBA货件PDF
+  并希望生成出口文件时，使用此skill。也适用于商检校验场景。
+---
+
+# 出口报关资料生成 Skill
+
+## 概述
+
+本skill将采购合同(Excel)和亚马逊FBA分仓货件(PDFs)作为输入，经过分仓归类、金额平摊、海运费计算等步骤，自动生成四份报关文件：出口合同、Invoice、Packing List、报关单草稿。
+
+所有确定性的解析和生成工作由 `scripts/` 下的Python脚本完成，你负责流程调度、用户交互和异常处理。
+
+## 依赖
+
+运行脚本前确保安装了依赖：
+```bash
+pip install xlrd openpyxl --break-system-packages -q
+```
+
+## 完整流程
+
+### Step 1: 收集输入文件
+
+向用户确认以下输入是否齐全：
+
+| # | 输入 | 形式 | 必需 |
+|---|------|------|------|
+| 1 | 采购合同 | Excel (.xls/.xlsx) | 是 |
+| 2 | 亚马逊FBA分仓货件 | 多个PDF文件 | 是 |
+| 3 | 分票报关指令 | 文字（哪些仓点合并为一票） | 是 |
+| 4 | 报关汇率 | 数字（通常5~8，如5.5） | 是 |
+| 5 | 海运费单价 | 数字（元/千克） | 是 |
+| 6 | SKU知识库 | Excel/在线表格（海关编码、品名、申报要素等） | 是 |
+
+如果用户没有提供知识库，可以从采购合同中提取基础信息，但要提醒用户补充海关编码和申报要素。
+
+### Step 2: 解析输入文件
+
+#### 2a. 解析采购合同
+
+```bash
+python {baseDir}/scripts/parse_purchase_contract.py <采购合同路径> --output /tmp/purchase_contract.json
+```
+
+输出JSON结构：
+```json
+{
+  "contract_no": "PO2603230466",
+  "date": "2026-03-23",
+  "supplier": {"name": "义乌市XXX有限公司", "city": "义乌"},
+  "buyer": {"name": "深圳市艾进贸易有限公司"},
+  "items": [
+    {
+      "name_cn": "仿真草坪",
+      "name_en": "artificial turf",
+      "spec": "绿色1米",
+      "fba_sku": "PTR220001-P",
+      "unit": "件",
+      "quantity": 250,
+      "packing_rate": 25,
+      "unit_price_with_tax": 8.8,
+      "package_size_cm": [43, 45, 54],
+      "net_weight_kg": 15,
+      "gross_weight_kg": 20,
+      "total_amount": 2200
+    }
+  ],
+  "grand_total": 22228.8
+}
+```
+
+#### 2b. 解析FBA货件PDF
+
+```bash
+python {baseDir}/scripts/parse_fba_pdf.py <PDF文件夹路径> --output /tmp/fba_shipments.json
+```
+
+输出JSON结构：
+```json
+{
+  "shipments": [
+    {
+      "file": "FBA199DN1ZLP-MDW2.pdf",
+      "warehouse_code": "MDW2",
+      "address": "250 EMERALD DR, Joliet, IL 60433-3280",
+      "total_boxes": 14,
+      "sku_breakdown": [
+        {"sku": "PTR220001-P", "boxes": 5, "qty_per_box": 25, "total_qty": 125},
+        {"sku": "PTR220002-P", "boxes": 3, "qty_per_box": 16, "total_qty": 48}
+      ]
+    }
+  ],
+  "matrix": {
+    "PTR220001-P": {"MDW2": 125, "AVP1": 50, "PSP3": 25, "SCK4": 25, "RDU2": 25},
+    "PTR220002-P": {"MDW2": 48, "AVP1": 80, "PSP3": 64, "SCK4": 96, "RDU2": 112}
+  }
+}
+```
+
+### Step 3: 呈现分仓矩阵，用户决策
+
+将 `matrix` 以可读的表格形式呈现给用户，例如：
+
+```
+SKU              MDW2   AVP1   PSP3   SCK4   RDU2   合计
+PTR220001-P       125     50     25     25     25    250
+PTR220002-P        48     80     64     96    112    400
+...
+合计              XXX    XXX    XXX    XXX    XXX    910
+```
+
+然后询问用户：
+1. **分票指令**：哪些仓点合并为一票？（如果用户还没提供）
+2. **哪些票要报关**：用户勾选（可多选）
+3. **报关汇率**和**海运费单价**（如果还没提供）
+
+### Step 4: 生成报关资料
+
+收集到所有参数后，调用生成脚本。该脚本一次性生成全部四份文件：
+
+```bash
+python {baseDir}/scripts/generate_all.py \
+  --contract /tmp/purchase_contract.json \
+  --shipments /tmp/fba_shipments.json \
+  --knowledge-base <知识库路径> \
+  --groups '<分票JSON>' \
+  --selected-groups '0,1' \
+  --exchange-rate 5.5 \
+  --shipping-rate 6 \
+  --output-dir <输出目录> \
+  --template-dir {baseDir}/assets/templates
+```
+
+其中 `--groups` 是分票指令的JSON格式：
+```json
+[
+  {"name": "美西", "warehouses": ["MDW2", "AVP1", "PSP3"]},
+  {"name": "美东", "warehouses": ["SCK4"]},
+  {"name": "美中", "warehouses": ["RDU2"]}
+]
+```
+
+`--selected-groups` 是用户选择要报关的票的索引（从0开始）。
+
+脚本会在输出目录下生成：
+- `【{合同号}】出口合同.xlsx`
+- `【{合同号}】IV&PL.xlsx`（含Invoice和Packing List两个sheet）
+- `出口报关单草稿.xlsx`
+
+每选中一票生成一套（多票时文件名含票名）。
+
+### Step 5: 输出结果给用户
+
+将生成的文件展示给用户，并附上关键数据摘要：
+- 报关数量（件数）
+- 申报总金额（美元）
+- 换汇验证结果（应等于报关汇率）
+- 总箱数、总毛重、总净重
+
+### Step 6: 商检校验（后期可选）
+
+当用户后续拿到商检单后，调用校验脚本：
+
+```bash
+python {baseDir}/scripts/validate_inspection.py \
+  --declaration /tmp/purchase_contract.json \
+  --inspection <商检单路径> \
+  --output /tmp/validation_result.json
+```
+
+返回三种结果之一：
+- `PASS`：商检和报关单据数据相符
+- `ITEM_COUNT_MISMATCH`：项数不一致，需人工调整
+- `VALUE_MISMATCH`：数值有误，需人工核对
+
+---
+
+## 核心计算公式参考
+
+这些公式已固化在生成脚本中，此处列出供理解和排查问题。
+
+### 箱数与重量
+```
+箱数 = 数量 ÷ 箱率
+总净重 = 外箱净重 × 箱数
+总毛重 = 外箱毛重 × 箱数
+方数(CBM) = 长cm × 宽cm × 高cm ÷ 1,000,000 × 箱数
+```
+
+### 计费重（整个采购合同的全部SKU）
+```
+总毛重 = Σ(每SKU的 外箱毛重 × 该SKU总箱数)
+总体积重 = Σ(每SKU的 长×宽×高÷6000 × 该SKU总箱数)
+计费重 = max(总毛重, 总体积重)
+```
+
+### 海运费
+```
+总海运费(RMB) = 计费重 × 海运费单价
+每SKU平摊运费 = 总海运费 × (该SKU计费重贡献 ÷ 总计费重)
+```
+注意：平摊依据取决于哪个更大——如果体积重>毛重，按体积重占比平摊；反之按毛重。
+
+### CNF单价（Invoice的核心）
+```
+不含税金额 = 该票该SKU采购金额 ÷ 1.13
+CNF总价(RMB) = 不含税金额 + 该SKU平摊海运费
+CNF单价(RMB) = CNF总价 ÷ 该票该SKU报关数量
+CNF单价(USD) = CNF单价(RMB) ÷ 报关汇率
+```
+
+### 金额分摊（多票报关时）
+```
+该票该SKU金额 = SKU采购总金额 × (该票该SKU数量 ÷ 所有选中票该SKU数量之和)
+```
+如果只选了一票，所有采购金额全部摊入该票。
+
+### 换汇验证
+```
+(不含税总额 + 总海运费) ÷ Invoice美元总金额 ≈ 报关汇率
+```
+
+---
+
+## 输出文件结构详情
+
+### 出口合同
+
+基于采购合同改造，主要变化：
+- 数量：变为该票报关涉及仓点的SKU数量汇总
+- 含税单价：= 原SKU采购金额 ÷ 该票报关数量（总金额不变，单价升高）
+- 右侧附计算器区域：总毛重、总体积重、计费重、总海运费、每SKU的运费平摊和C&F价格
+
+### Invoice
+
+| 字段 | 来源 |
+|------|------|
+| Tariff Code | SKU知识库 |
+| Description | SKU知识库（英文品名） |
+| Qty | 该票该SKU报关数量 |
+| Unit | 知识库/采购合同 |
+| Unit Price | CNF单价(USD) |
+| USD | Unit Price × Qty |
+| material quality | SKU知识库 |
+
+### Packing List
+
+| 字段 | 来源 |
+|------|------|
+| Tariff Code | SKU知识库 |
+| Description | SKU知识库 |
+| Qty | 该票该SKU报关数量 |
+| Box Qty | Qty ÷ 箱率 |
+| N.W. | 外箱净重 × Box Qty |
+| G.W. | 外箱毛重 × Box Qty |
+| VOLUME | 长×宽×高÷1000000 × Box Qty |
+
+### 报关单草稿
+
+每个SKU占三行：
+- 第一行：品名、申报要素、海关编码、第二单位(如"个")及数量、CNF单价(USD)、总价、原产国(中国)、目的国(美国)、货源地(供方城市)
+- 第二行：千克单位、净重数值、该SKU总价(USD)
+- 第三行：第二单位(如"个")、数量、币制(美元)
+
+头部固定信息：境内发货人、境外收货人、合同号、件数(总箱数)、毛重、净重、成交方式(C&F)、运费(USD)等。
+
+---
+
+## 注意事项
+
+- 采购合同可能是 `.xls` 旧格式，脚本已兼容处理
+- FBA货件PDF的文本编码可能有问题，脚本用 `pdftotext -layout` 提取并做了容错处理
+- 生成的输出文件统一为 `.xlsx` 格式
+- 如果知识库不可用，用采购合同中的信息兜底，但提醒用户补充海关编码和申报要素
+- 成交方式当前固定为 C&F (CNF)，脚本预留了 FOB 参数（`--price-term FOB` 时不平摊海运费）
