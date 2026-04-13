@@ -157,8 +157,9 @@ def test_gen_iv_pl():
         assert iv["A1"].value == "INVOICE"
         assert iv["A1"].font.size == 16
         assert iv["A1"].font.name == "Arial"
+        assert iv["A1"].font.bold is True
         assert iv["A1"].alignment.horizontal == "center"
-        print("[PASS] IV title: 'INVOICE', Arial 16, centered")
+        print("[PASS] IV title: 'INVOICE', Arial 16 bold, centered")
 
         # 4) Shipper info
         assert "Shenzhen Adhoc" in str(iv["B2"].value)
@@ -187,6 +188,7 @@ def test_gen_iv_pl():
 
         cn_hdrs_7 = [None, '海关编码（清关用的）', '英文品名', '数量', 'PC(S)',
                      '单价', 'USD', '总价', '材质', '产品图片']
+        # Note: first entry is None — empty cell in row 8 col A
         for c, h in enumerate(cn_hdrs_7, 1):
             actual = iv.cell(row=8, column=c).value
             if h is None:
@@ -267,7 +269,8 @@ def test_gen_iv_pl():
         assert pl["A1"].value == "PACKING LIST"
         assert pl["A1"].font.size == 16
         assert pl["A1"].font.name == "Arial"
-        print("[PASS] PL title: 'PACKING LIST', Arial 16")
+        assert pl["A1"].font.bold is True
+        print("[PASS] PL title: 'PACKING LIST', Arial 16 bold")
 
         # 13) Shipper info
         assert "Shenzhen Adhoc" in str(pl["B2"].value)
