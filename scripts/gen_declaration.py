@@ -644,11 +644,26 @@ def gen_declaration(
         # Set row heights: row1=14.25
         ws.row_dimensions[row].height = 14.25
 
+        # Border helpers for 3-row item block
+        r1 = row       # first row of item
+        r2 = row + 1   # middle row
+        r3 = row + 2   # last row
+
+        # Apply thin borders around entire item block (A:S, 3 rows)
+        for r in (r1, r2, r3):
+            for c in range(1, 20):  # columns A(1) to S(19)
+                cell = ws.cell(row=r, column=c)
+                left = Side(style='thin') if c == 1 else cell.border.left
+                right = Side(style='thin') if c == 19 else cell.border.right
+                top = Side(style='thin') if r == r1 else cell.border.top
+                bottom = Side(style='thin') if r == r3 else cell.border.bottom
+                cell.border = Border(left=left, right=right, top=top, bottom=bottom)
+
         # Row 1: main info with merges
         c1 = ws.cell(row=row, column=1, value=item_no)
         c1.font = item_font
         c1.alignment = Alignment(horizontal='center', vertical='center')
-        c1.border = Border(left=Side(style='thin'))
+        c1.border = Border(left=Side(style='thin'), top=Side(style='thin'))
 
         c2 = ws.cell(row=row, column=2, value=info['tariff_code'] or 3918909000)
         c2.font = item_font
@@ -690,7 +705,7 @@ def gen_declaration(
         c19 = ws.cell(row=row, column=19, value='照章征税')
         c19.font = item_font
         c19.alignment = Alignment(vertical='center')
-        c19.border = Border(right=Side(style='thin'))
+        c19.border = Border(right=Side(style='thin'), top=Side(style='thin'))
 
         # Row 2: declaration elements + net weight + total price
         row += 1
@@ -698,7 +713,6 @@ def gen_declaration(
         c4_r2 = ws.cell(row=row, column=4, value=info['declaration_elements'])
         c4_r2.font = Font(name='宋体', size=10)
         c4_r2.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
-        c4_r2.border = Border(bottom=Side(style='thin'))
         ws.merge_cells(f'D{row}:F{row+1}')
 
         c7_r2 = ws.cell(row=row, column=7, value=round(nw_kg, 1))
@@ -721,23 +735,20 @@ def gen_declaration(
         ws.merge_cells(f'M{row}:O{row}')
         ws.merge_cells(f'P{row}:R{row}')
 
-        # Row 3: qty in 个 + currency (with bottom borders)
+        # Row 3: qty in 个 + currency
         row += 1
         ws.merge_cells(f'B{row}:C{row}')
 
         c7_r3 = ws.cell(row=row, column=7, value=qty)
         c7_r3.font = item_font
         c7_r3.alignment = Alignment(vertical='center')
-        c7_r3.border = Border(bottom=Side(style='thin'))
 
         ws.cell(row=row, column=8, value='个').font = item_font
         ws.cell(row=row, column=8).alignment = Alignment(vertical='center')
-        ws.cell(row=row, column=8).border = Border(bottom=Side(style='thin'))
 
         c9_r3 = ws.cell(row=row, column=9, value='美元')
         c9_r3.font = item_font
         c9_r3.alignment = Alignment(horizontal='right', vertical='center')
-        c9_r3.border = Border(bottom=Side(style='thin'))
         ws.merge_cells(f'I{row}:J{row}')
 
         ws.merge_cells(f'K{row}:L{row}')
