@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Test script for gen_export_contract.py — generates a sample 出口合同 (export contract)
+Test script for gen_export_contract.py — generates a sample 出货合同 (export contract)
 and verifies the output Excel structure and styling.
 """
 
@@ -66,8 +66,19 @@ SAMPLE_ITEMS = [
 SAMPLE_CONTRACT = {
     "contract_no": "PO2603230466",
     "date": "2026-03-23",
-    "supplier": {"name": "义乌市绿美工艺品有限公司", "city": "义乌"},
-    "buyer": {"name": "ZEATALINE INTERNATIONAL TRADING"},
+    "supplier": {
+        "name": "义乌市绿美工艺品有限公司",
+        "city": "义乌",
+        "address": "",
+        "contact": "",
+        "phone": "",
+    },
+    "buyer": {
+        "name": "深圳市艾进贸易有限公司",
+        "address": "",
+        "contact": "",
+        "phone": "",
+    },
     "grand_total": 270600.00,
 }
 
@@ -162,12 +173,12 @@ def test_gen_export_contract():
         assert ws.title == "出口合同", f"Unexpected sheet title: {ws.title}"
         print(f"[PASS] Sheet title: {ws.title}")
 
-        # 3) Title: '采购合同'
-        assert ws["A1"].value == "采购合同"
+        # 3) Title: '出货合同'
+        assert ws["A1"].value == "出货合同"
         assert ws["A1"].font.size == 24
         assert ws["A1"].font.name == "宋体"
         assert ws["A1"].alignment.horizontal == "center"
-        print("[PASS] Title: '采购合同', font 宋体 size 24, centered")
+        print("[PASS] Title: '出货合同', font 宋体 size 24, centered")
 
         # 4) Contract number
         assert ws["I2"].value == "PO2603230466"
@@ -179,9 +190,20 @@ def test_gen_export_contract():
 
         # 6) Supplier and buyer
         assert ws["D4"].value == "义乌市绿美工艺品有限公司"
-        assert ws["I4"].value == "ZEATALINE INTERNATIONAL TRADING"
+        assert ws["I4"].value == "深圳市艾进贸易有限公司"
         print(f"[PASS] Supplier: {ws['D4'].value}")
         print(f"[PASS] Buyer: {ws['I4'].value}")
+
+        # 6b) Header rows: 地址/联系人/电话
+        assert ws["A5"].value == "地址："
+        assert ws["H5"].value == "地址："
+        assert ws["A6"].value == "联系人："
+        assert ws["A7"].value == "电话："
+        print("[PASS] Header section: 地址/联系人/电话 rows present")
+
+        # 6c) Section label
+        assert ws["A9"].value == "一、项目名称、规格型号、数量、金额"
+        print("[PASS] Section label at A9")
 
         # 7) Column headers at row 11
         expected_headers = ['产品名称', '产品图片', '规格型号', 'FBA SKU', '单位', '数量',
@@ -190,6 +212,23 @@ def test_gen_export_contract():
             actual = ws.cell(row=11, column=c).value
             assert actual == h, f"Header col {c} mismatch: {actual} != {h}"
         print("[PASS] All 12 column headers correct at row 11")
+
+        # 7b) Header borders check
+        h1 = ws.cell(row=11, column=1)
+        assert h1.border.top.style == 'medium', f"Header row top border should be medium, got {h1.border.top.style}"
+        assert h1.border.bottom.style == 'medium', f"Header row bottom border should be medium, got {h1.border.bottom.style}"
+        assert h1.border.left.style == 'medium', f"Header col A left border should be medium, got {h1.border.left.style}"
+        h12 = ws.cell(row=11, column=12)
+        assert h12.border.right.style == 'medium', f"Header col L right border should be medium, got {h12.border.right.style}"
+        print("[PASS] Header row borders: medium top/bottom, medium left/right edges")
+
+        # 7c) Right-side calc headers
+        assert ws.cell(row=11, column=15).value == '实重'
+        assert ws.cell(row=11, column=16).value == '体积重'
+        assert ws.cell(row=11, column=17).value == '海运费平摊'
+        assert ws.cell(row=11, column=18).value == 'C&F总价'
+        assert ws.cell(row=11, column=19).value == 'C&F单价'
+        print("[PASS] Right-side calc headers correct")
 
         # 8) Item data rows starting at row 12
         row = 12
@@ -220,7 +259,7 @@ def test_gen_export_contract():
             # Column G: packing rate
             assert ws.cell(row=row, column=7).value == item["packing_rate"]
 
-            # Column H: unit price (含税单价 = total_amount / qty)
+            # Column H: unit price
             unit_price = ws.cell(row=row, column=8).value
             expected_up = round(amt / qty, 2)
             assert abs(unit_price - expected_up) < 0.01, f"Item {idx+1}: unit price {unit_price} != {expected_up}"
@@ -240,24 +279,32 @@ def test_gen_export_contract():
             total_amt = ws.cell(row=row, column=12).value
             assert abs(total_amt - round(amt, 2)) < 0.01
 
-            # Right-side calculation columns
-            # Column T (19): volume weight > 0
-            vol_w = ws.cell(row=row, column=19).value
+            # Data row borders
+            d1 = ws.cell(row=row, column=1)
+            assert d1.border.top.style == 'medium', f"Data row {row} col A top border should be medium"
+            assert d1.border.bottom.style == 'thin', f"Data row {row} col A bottom border should be thin"
+            assert d1.border.left.style == 'medium', f"Data row {row} col A left border should be medium"
+            d12 = ws.cell(row=row, column=12)
+            assert d12.border.right.style == 'medium', f"Data row {row} col L right border should be medium"
+
+            # Alignment: center/center with wrap
+            assert d1.alignment.horizontal == 'center'
+            assert d1.alignment.vertical == 'center'
+            assert d1.alignment.wrap_text is True
+
+            # Right-side calc columns
+            real_w = ws.cell(row=row, column=15).value
+            assert real_w > 0, f"Item {idx+1}: real weight should be > 0"
+            vol_w = ws.cell(row=row, column=16).value
             assert vol_w > 0, f"Item {idx+1}: volume weight should be > 0"
-
-            # Column U (20): shipping alloc > 0
-            ship_val = ws.cell(row=row, column=20).value
+            ship_val = ws.cell(row=row, column=17).value
             assert ship_val > 0, f"Item {idx+1}: shipping alloc should be > 0"
-
-            # Column V (21): C&F total > 0
-            cnf_total = ws.cell(row=row, column=21).value
+            cnf_total = ws.cell(row=row, column=18).value
             assert cnf_total > 0, f"Item {idx+1}: C&F total should be > 0"
-
-            # Column W (22): C&F unit > 0
-            cnf_unit = ws.cell(row=row, column=22).value
+            cnf_unit = ws.cell(row=row, column=19).value
             assert cnf_unit > 0, f"Item {idx+1}: C&F unit price should be > 0"
 
-            print(f"[PASS] Item {idx+1} ({sku}): all fields correct, C&F unit={cnf_unit:.2f}")
+            print(f"[PASS] Item {idx+1} ({sku}): all fields + borders + alignment correct, C&F unit={cnf_unit:.2f}")
 
             sum_qty += qty
             sum_amt += amt
@@ -265,45 +312,83 @@ def test_gen_export_contract():
 
         # 9) Totals row — "小写合计"
         assert ws.cell(row=row, column=1).value == "小写合计"
-        assert ws.cell(row=row, column=6).value == sum_qty
-        print(f"[PASS] Subtotal row: qty={sum_qty}")
+        # Check border on 小写合计
+        t1 = ws.cell(row=row, column=1)
+        assert t1.border.top.style == 'medium'
+        assert t1.border.left.style == 'medium'
+        print(f"[PASS] 小写合计 row with borders")
+
+        # Right-side: 总重
+        assert ws.cell(row=row, column=14).value == '总重'
+        assert ws.cell(row=row, column=15).value == round(TOTAL_GROSS, 1)
+        print("[PASS] 总重 label and value")
 
         # 10) "大写合计" row
         row += 1
         assert ws.cell(row=row, column=1).value == "大写合计"
-        print("[PASS] Grand total label row present")
+        # Right-side: 总海运费
+        assert ws.cell(row=row, column=14).value == '总海运费'
+        assert ws.cell(row=row, column=15).value == round(TOTAL_SHIP, 2)
+        print("[PASS] 大写合计 + 总海运费")
 
-        # 11) "共计" row with total amount
-        row += 2
+        # 11) Empty bordered row
+        row += 1
+        for ci in range(1, 13):
+            cell = ws.cell(row=row, column=ci)
+            assert cell.border.top.style == 'medium', f"Empty row col {ci} top border should be medium"
+        print("[PASS] Empty bordered row")
+
+        # 12) "共计" row
+        row += 1
         assert ws.cell(row=row, column=1).value == "共计"
         grand_total = ws.cell(row=row, column=12).value
         assert abs(grand_total - round(sum_amt, 2)) < 0.01
-        print(f"[PASS] Grand total: {grand_total}")
+        # Bottom border should be medium
+        g12 = ws.cell(row=row, column=12)
+        assert g12.border.bottom.style == 'medium'
+        assert g12.border.right.style == 'medium'
+        print(f"[PASS] 共计: {grand_total}, borders correct")
 
-        # 12) Exchange rate validation cell
-        rate_label = ws.cell(row=row, column=14).value
-        assert f"{EXCHANGE_RATE}" in str(rate_label)
-        print(f"[PASS] Exchange rate label: {rate_label}")
+        # 13) Row heights
+        assert ws.row_dimensions[1].height == 42
+        assert ws.row_dimensions[5].height == 27
+        print("[PASS] Row heights correct")
 
-        # 13) Calculation summary labels (rows 13-16, col N)
-        assert ws.cell(row=13, column=14).value == "总毛重"
-        assert ws.cell(row=13, column=15).value == round(TOTAL_GROSS, 1)
-        assert ws.cell(row=14, column=14).value == "总体积重"
-        assert ws.cell(row=14, column=15).value == round(TOTAL_VOL, 2)
-        assert ws.cell(row=15, column=14).value == "计费重"
-        assert ws.cell(row=15, column=15).value == round(CHARGEABLE, 2)
-        assert "总海运费" in str(ws.cell(row=16, column=14).value)
-        assert ws.cell(row=16, column=15).value == round(TOTAL_SHIP, 2)
-        print("[PASS] Calculation summary: 总毛重/总体积重/计费重/总海运费 all correct")
+        # 14) Contract terms text
+        # Find the first terms row (should be 2 rows after 共计)
+        terms_row = row + 2
+        term1 = ws.cell(row=terms_row, column=1).value
+        assert term1 is not None and '交期' in str(term1), f"Expected contract term at row {terms_row}, got: {term1}"
+        print(f"[PASS] Contract terms start at row {terms_row}")
 
-        # 14) Font checks — all content should be 宋体 size 10
+        # Check a few key terms exist
+        found_terms = set()
+        for r in range(terms_row, terms_row + 40):
+            v = ws.cell(row=r, column=1).value
+            if v:
+                if '交期' in str(v): found_terms.add('交期')
+                if '账期' in str(v): found_terms.add('账期')
+                if '交货地点' in str(v): found_terms.add('交货地点')
+                if '保密协议' in str(v): found_terms.add('保密协议')
+                if '验货标准' in str(v): found_terms.add('验货标准')
+                if '包装标准' in str(v): found_terms.add('包装标准')
+                if '售后保障' in str(v): found_terms.add('售后保障')
+                if '纠纷' in str(v): found_terms.add('纠纷')
+                if '开票' in str(v): found_terms.add('开票')
+                if '壹式贰份' in str(v): found_terms.add('壹式贰份')
+                if '供方：' in str(v): found_terms.add('供方签章')
+                if '盖章：' in str(v): found_terms.add('盖章')
+
+        expected_terms = {'交期', '账期', '交货地点', '保密协议', '验货标准', '包装标准',
+                         '售后保障', '纠纷', '开票', '壹式贰份', '供方签章', '盖章'}
+        missing = expected_terms - found_terms
+        assert not missing, f"Missing contract terms: {missing}"
+        print(f"[PASS] All {len(expected_terms)} contract terms/signatures found")
+
+        # 15) Font checks
         assert ws.cell(row=12, column=1).font.name == "宋体"
         assert ws.cell(row=12, column=1).font.size == 10
         print("[PASS] Data font: 宋体 size 10")
-
-        # 15) Row heights
-        assert ws.row_dimensions[1].height == 42
-        print(f"[PASS] Row 1 height: {ws.row_dimensions[1].height}")
 
         print("\n" + "=" * 60)
         print("ALL TESTS PASSED for gen_export_contract")
