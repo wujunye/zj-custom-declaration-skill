@@ -25,8 +25,13 @@ def gen_declaration(
     rate: float,
     price_term: str,
     out_dir: str,
-) -> str:
-    """Generate the declaration draft Excel file. Returns the output file path."""
+) -> tuple:
+    """Generate the declaration draft Excel file.
+
+    Returns (output_file_path, warnings) where warnings is a list of strings
+    for unit mismatches that require manual attention.
+    """
+    warnings = []
 
     def _info(sku: str, item: dict) -> dict:
         if sku in kb:
@@ -36,7 +41,24 @@ def gen_declaration(
             'english_name': item.get('name_en', ''),
             'declaration_elements': '0|0|塑料|塑料草坪|无品牌|无型号',
             'material': 'plastic',
+            'unit_1': '',
+            'unit_2': '',
         }
+
+    def _resolve_qty(unit: str, nw_kg: float, qty: int, contract_unit: str, sku: str):
+        """Resolve quantity for a given unit.
+
+        - 千克 → net weight
+        - Other unit → use contract qty if contract unit matches, else leave blank + warn
+        """
+        if unit == '千克':
+            return round(nw_kg, 1)
+        if unit == contract_unit:
+            return qty
+        warnings.append(
+            f'SKU {sku}: 报关单位"{unit}"与采购合同单位"{contract_unit}"不一致，数量留空请人工填写'
+        )
+        return None
 
     wb = Workbook()
     ws = wb.active
@@ -672,6 +694,15 @@ def gen_declaration(
 
         info = _info(sku, item)
         nw_kg = item.get('net_weight_kg', 0) * (qty / (item.get('packing_rate', 1) or 1))
+        contract_unit = item.get('unit', '')
+
+        # Determine units: unit_1 from KB (default '千克'), unit_2 from KB or fallback to contract unit
+        unit_1 = info.get('unit_1', '') or '千克'
+        unit_2 = info.get('unit_2', '') or contract_unit
+
+        # Resolve quantities per unit
+        qty_1 = _resolve_qty(unit_1, nw_kg, qty, contract_unit, sku)
+        qty_2 = _resolve_qty(unit_2, nw_kg, qty, contract_unit, sku)
 
         # Set row heights: row1=14.25
         ws.row_dimensions[row].height = 14.25
@@ -707,11 +738,12 @@ def gen_declaration(
         c4.alignment = Alignment(horizontal='left', vertical='center')
         ws.merge_cells(f'D{row}:F{row}')
 
-        c7 = ws.cell(row=row, column=7, value=qty)
-        c7.font = item_font
-        c7.alignment = Alignment(vertical='center')
+        if qty_1 is not None:
+            c7 = ws.cell(row=row, column=7, value=qty_1)
+            c7.font = item_font
+            c7.alignment = Alignment(vertical='center')
 
-        ws.cell(row=row, column=8, value='个').font = item_font
+        ws.cell(row=row, column=8, value=unit_1).font = item_font
         ws.cell(row=row, column=8).alignment = Alignment(vertical='center')
 
         c9 = ws.cell(row=row, column=9, value=round(unit_usd, 6))
@@ -747,11 +779,12 @@ def gen_declaration(
         c4_r2.alignment = Alignment(horizontal='left', vertical='center', wrap_text=True)
         ws.merge_cells(f'D{row}:F{row+1}')
 
-        c7_r2 = ws.cell(row=row, column=7, value=round(nw_kg, 1))
-        c7_r2.font = item_font
-        c7_r2.alignment = Alignment(vertical='center')
+        if qty_2 is not None:
+            c7_r2 = ws.cell(row=row, column=7, value=qty_2)
+            c7_r2.font = item_font
+            c7_r2.alignment = Alignment(vertical='center')
 
-        ws.cell(row=row, column=8, value='千克').font = item_font
+        ws.cell(row=row, column=8, value=unit_2).font = item_font
         ws.cell(row=row, column=8).alignment = Alignment(vertical='center')
 
         c9_r2 = ws.cell(row=row, column=9, value=round(total_usd, 2))
@@ -767,15 +800,16 @@ def gen_declaration(
         ws.merge_cells(f'M{row}:O{row}')
         ws.merge_cells(f'P{row}:R{row}')
 
-        # Row 3: qty in 个 + currency
+        # Row 3: same as row 1 (unit_1 + qty_1) + currency
         row += 1
         ws.merge_cells(f'B{row}:C{row}')
 
-        c7_r3 = ws.cell(row=row, column=7, value=qty)
-        c7_r3.font = item_font
-        c7_r3.alignment = Alignment(vertical='center')
+        if qty_1 is not None:
+            c7_r3 = ws.cell(row=row, column=7, value=qty_1)
+            c7_r3.font = item_font
+            c7_r3.alignment = Alignment(vertical='center')
 
-        ws.cell(row=row, column=8, value='个').font = item_font
+        ws.cell(row=row, column=8, value=unit_1).font = item_font
         ws.cell(row=row, column=8).alignment = Alignment(vertical='center')
 
         c9_r3 = ws.cell(row=row, column=9, value='美元')
@@ -793,4 +827,4 @@ def gen_declaration(
     fn = f'{suffix}出口报关单草稿.xlsx' if suffix else '出口报关单草稿.xlsx'
     fp = os.path.join(out_dir, fn)
     wb.save(fp)
-    return fp
+    return fp, warnings

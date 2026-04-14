@@ -78,18 +78,24 @@ SAMPLE_KB = {
         "english_name": "Artificial Grass Interlocking Floor Tiles",
         "declaration_elements": "0|0|塑料|人造草坪拼接地板|无品牌|无型号",
         "material": "plastic",
+        "unit_1": "千克",
+        "unit_2": "",  # empty → fallback to contract unit "件"
     },
     "PG-FENCE-6040": {
         "tariff_code": "3926909090",
         "english_name": "Plastic Grass Fence Panel",
         "declaration_elements": "0|0|塑料|塑料草坪围栏|无品牌|无型号",
         "material": "plastic",
+        "unit_1": "千克",
+        "unit_2": "件",
     },
     "AP-WALL-4060": {
         "tariff_code": "6702100000",
         "english_name": "Artificial Plant Wall Decor",
         "declaration_elements": "0|0|塑料|仿真植物墙|无品牌|无型号",
         "material": "plastic",
+        "unit_1": "件",
+        "unit_2": "千克",
     },
 }
 
@@ -138,7 +144,7 @@ SHIP_ALLOC, TOTAL_SHIP = _compute_ship_alloc(SAMPLE_ITEMS, SHIPPING_RATE)
 
 def test_gen_declaration():
     with tempfile.TemporaryDirectory() as tmpdir:
-        fp = gen_declaration(
+        fp, decl_warnings = gen_declaration(
             items=SAMPLE_ITEMS,
             contract=SAMPLE_CONTRACT,
             kb=SAMPLE_KB,
@@ -203,15 +209,41 @@ def test_gen_declaration():
         row = 20
         for idx, item in enumerate(SAMPLE_ITEMS, 1):
             sku = sku_key(item)
+            kb_entry = SAMPLE_KB[sku]
+            contract_unit = item["unit"]
+            u1 = kb_entry["unit_1"] or "千克"
+            u2 = kb_entry["unit_2"] or contract_unit
+
+            qty_val = item["quantity"]
+            pr = item.get("packing_rate", 1) or 1
+            nw_kg = item["net_weight_kg"] * (qty_val / pr)
+
+            # Expected quantities per unit
+            def expected_qty(unit):
+                if unit == "千克":
+                    return round(nw_kg, 1)
+                elif unit == contract_unit:
+                    return qty_val
+                else:
+                    return None
+
+            exp_qty_1 = expected_qty(u1)
+            exp_qty_2 = expected_qty(u2)
+
             # Row 1: item number
             assert ws.cell(row=row, column=1).value == idx, f"Item {idx} number mismatch"
             # Row 1: tariff code
             tariff = ws.cell(row=row, column=2).value
-            assert tariff == SAMPLE_KB[sku]["tariff_code"], f"Item {idx} tariff mismatch: {tariff}"
+            assert tariff == kb_entry["tariff_code"], f"Item {idx} tariff mismatch: {tariff}"
             # Row 1: Chinese name
             assert ws.cell(row=row, column=4).value == item["name_cn"]
-            # Row 1: quantity
-            assert ws.cell(row=row, column=7).value == item["quantity"]
+            # Row 1: unit_1 and quantity
+            assert ws.cell(row=row, column=8).value == u1, f"Item {idx} row1 unit: {ws.cell(row=row, column=8).value} != {u1}"
+            if exp_qty_1 is not None:
+                assert ws.cell(row=row, column=7).value == exp_qty_1, \
+                    f"Item {idx} row1 qty: {ws.cell(row=row, column=7).value} != {exp_qty_1}"
+            else:
+                assert ws.cell(row=row, column=7).value is None, f"Item {idx} row1 qty should be blank"
             # Row 1: unit price in USD
             unit_usd = ws.cell(row=row, column=9).value
             assert isinstance(unit_usd, float) and unit_usd > 0
@@ -227,19 +259,33 @@ def test_gen_declaration():
 
             # Row 2: declaration elements
             decl_elem = ws.cell(row=row + 1, column=4).value
-            assert decl_elem == SAMPLE_KB[sku]["declaration_elements"]
-            # Row 2: net weight in kg
-            nw_val = ws.cell(row=row + 1, column=7).value
-            assert nw_val > 0
+            assert decl_elem == kb_entry["declaration_elements"]
+            # Row 2: unit_2 and quantity
+            assert ws.cell(row=row + 1, column=8).value == u2, \
+                f"Item {idx} row2 unit: {ws.cell(row=row + 1, column=8).value} != {u2}"
+            if exp_qty_2 is not None:
+                assert ws.cell(row=row + 1, column=7).value == exp_qty_2, \
+                    f"Item {idx} row2 qty: {ws.cell(row=row + 1, column=7).value} != {exp_qty_2}"
+            else:
+                assert ws.cell(row=row + 1, column=7).value is None, f"Item {idx} row2 qty should be blank"
             # Row 2: total USD
             total_usd = ws.cell(row=row + 1, column=9).value
             assert isinstance(total_usd, float) and total_usd > 0
 
-            # Row 3: currency label
+            # Row 3: same unit/qty as row 1 + currency
+            assert ws.cell(row=row + 2, column=8).value == u1, \
+                f"Item {idx} row3 unit: {ws.cell(row=row + 2, column=8).value} != {u1}"
+            if exp_qty_1 is not None:
+                assert ws.cell(row=row + 2, column=7).value == exp_qty_1, \
+                    f"Item {idx} row3 qty: {ws.cell(row=row + 2, column=7).value} != {exp_qty_1}"
             assert ws.cell(row=row + 2, column=9).value == "美元"
 
-            print(f"[PASS] Item {idx} ({sku}): 3-row layout, tariff={tariff}, qty={item['quantity']}")
+            print(f"[PASS] Item {idx} ({sku}): 3-row layout, tariff={tariff}, u1={u1}, u2={u2}")
             row += 3
+
+        # 9b) No warnings expected (all contract units match KB units)
+        assert len(decl_warnings) == 0, f"Unexpected warnings: {decl_warnings}"
+        print(f"[PASS] No unit mismatch warnings")
 
         # 10) Border checks — title row merged, medium borders on row 3
         row3_a = ws["A3"]

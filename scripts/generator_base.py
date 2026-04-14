@@ -70,6 +70,8 @@ class CustomsDeclarationGenerator:
                     'english_name': row[2] if len(row) > 2 and row[2] else '',
                     'declaration_elements': row[3] if len(row) > 3 and row[3] else '0|0|塑料|塑料草坪|无品牌|无型号',
                     'material': row[4] if len(row) > 4 and row[4] else 'plastic',
+                    'unit_1': str(row[5]).strip() if len(row) > 5 and row[5] else '',
+                    'unit_2': str(row[6]).strip() if len(row) > 6 and row[6] else '',
                 }
         except Exception as e:
             print(f"Warning: KB load failed: {e}", file=sys.stderr)
@@ -198,6 +200,7 @@ class CustomsDeclarationGenerator:
         cno = self.contract.get('contract_no', 'UNKNOWN')
         files = []
         group_names = []
+        all_warnings = []
 
         for gi in self.selected:
             gname = self.groups[gi]['name']
@@ -227,13 +230,16 @@ class CustomsDeclarationGenerator:
             files.append(os.path.basename(f2))
 
             # 3) Declaration draft
-            f3 = gen_declaration(
+            f3, decl_warnings = gen_declaration(
                 items=self.items, contract=self.contract, kb=self.kb,
                 cno=cno, suffix=suffix, tq=tq, ta=ta, ship_alloc=sa,
                 total_ship=total_ship, rate=self.rate,
                 price_term=self.price_term, out_dir=self.out_dir,
             )
             files.append(os.path.basename(f3))
+            all_warnings.extend(decl_warnings)
+            for w in decl_warnings:
+                print(f"⚠️  {w}", file=sys.stderr)
 
         # Summary
         all_qty = {}
@@ -281,6 +287,7 @@ class CustomsDeclarationGenerator:
         summary = {
             'groups_generated': group_names,
             'files': files,
+            'warnings': all_warnings,
             'summary': {
                 'total_qty': sum(all_qty.values()),
                 'total_usd': round(total_usd, 2),
