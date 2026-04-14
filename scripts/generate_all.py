@@ -32,7 +32,7 @@ def main():
     parser = argparse.ArgumentParser(description='Generate customs declaration documents')
     parser.add_argument('--contract', required=True, help='Path to purchase_contract.json')
     parser.add_argument('--shipments', required=True, help='Path to fba_shipments.json')
-    parser.add_argument('--knowledge-base', help='Path to knowledge base Excel')
+    parser.add_argument('--knowledge-base', help='Path to knowledge base JSON')
     parser.add_argument('--groups', required=True, help='JSON string defining ticket groups')
     parser.add_argument('--selected-groups', required=True, help='Comma-separated group indices')
     parser.add_argument('--exchange-rate', type=float, required=True)

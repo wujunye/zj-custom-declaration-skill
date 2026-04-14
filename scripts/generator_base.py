@@ -56,26 +56,13 @@ class CustomsDeclarationGenerator:
             return json.load(f)
 
     def _load_kb(self, path: str) -> Dict[str, dict]:
-        """Load knowledge base Excel (SKU → tariff/name/elements/material)."""
-        from openpyxl import load_workbook
-        kb = {}
+        """Load knowledge base JSON (SKU → tariff/name/elements/material)."""
         try:
-            wb = load_workbook(path)
-            ws = wb.active
-            for row in ws.iter_rows(min_row=2, values_only=True):
-                if row[0] is None:
-                    break
-                kb[str(row[0])] = {
-                    'tariff_code': row[1] if len(row) > 1 and row[1] else '',
-                    'english_name': row[2] if len(row) > 2 and row[2] else '',
-                    'declaration_elements': row[3] if len(row) > 3 and row[3] else '0|0|塑料|塑料草坪|无品牌|无型号',
-                    'material': row[4] if len(row) > 4 and row[4] else 'plastic',
-                    'unit_1': str(row[5]).strip() if len(row) > 5 and row[5] else '',
-                    'unit_2': str(row[6]).strip() if len(row) > 6 and row[6] else '',
-                }
+            with open(path, 'r', encoding='utf-8') as f:
+                return json.load(f)
         except Exception as e:
             print(f"Warning: KB load failed: {e}", file=sys.stderr)
-        return kb
+            return {}
 
     # ─── quantity computation ──────────────────────────────────────────
 

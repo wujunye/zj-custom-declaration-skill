@@ -35,15 +35,31 @@ pip install xlrd openpyxl --break-system-packages -q
 | 3 | 分票报关指令 | 文字（哪些仓点合并为一票） | 是 |
 | 4 | 报关汇率 | 数字（通常5~8，如5.5） | 是 |
 | 5 | 海运费单价 | 数字（元/千克） | 是 |
-| 6 | SKU知识库 | Excel/在线表格（海关编码、英文品名、申报要素、法定第一单位、第二单位等） | 是 |
+| 6 | SKU知识库 | 腾讯文档在线表格 或 用户手动输入（海关编码、英文品名、申报要素、材质、法定第一单位、第二单位） | 是 |
 
 **知识库获取方式：**
 - **优先从腾讯文档获取**：使用腾讯文档skill读取在线表格。腾讯文档列名为：`产品 | 英文品名 | HS CODE | 单位一 | 单位二 | 材质`。其中"产品"列为产品中文名，需要用采购合同中解析出的产品中文名（name_cn）在表格中搜索匹配，匹配成功后获取该行的英文品名、HS CODE、单位一、单位二、材质等信息。
 - **腾讯文档获取失败时的兜底方案**：如果腾讯文档连接失败、搜索不到匹配产品、或读取异常，可以让用户手动输入产品所需信息。**必须提醒用户提供以下所有字段**：英文品名、HS CODE、单位一、单位二、材质，确保信息完整，否则无法正确生成报关资料。
 
+**知识库JSON格式：**
+无论从腾讯文档获取还是用户手动输入，收集到信息后统一转为JSON文件（保存到 `/tmp/knowledge_base.json`），再传给脚本。格式如下：
+```json
+{
+  "产品中文名或SKU": {
+    "tariff_code": "3918909000",
+    "english_name": "Artificial Grass Tiles",
+    "declaration_elements": "0|0|塑料|人造草坪|无品牌|无型号",
+    "material": "plastic",
+    "unit_1": "千克",
+    "unit_2": "平方米"
+  }
+}
+```
+其中键名为采购合同中的产品中文名（name_cn）或SKU编号，需与采购合同解析结果中的 `sku_key` 一致。
+
 **产品名称来源规则：**
 - **中文名（name_cn）**：从采购合同A列解析。若单元格内有换行则取第一行，无换行则取整个名称。
-- **英文名（english_name）**：仅从知识库获取（第3列）。采购合同中不提取英文名。
+- **英文名（english_name）**：仅从知识库获取。采购合同中不提取英文名。
 
 如果用户没有提供知识库，可以从采购合同中提取基础信息，但要提醒用户补充海关编码、英文品名、申报要素、法定第一单位和第二单位。
 
@@ -134,7 +150,7 @@ PTR220002-P        48     80     64     96    112    400
 python {baseDir}/scripts/generate_all.py \
   --contract /tmp/purchase_contract.json \
   --shipments /tmp/fba_shipments.json \
-  --knowledge-base <知识库路径> \
+  --knowledge-base /tmp/knowledge_base.json \
   --groups '<分票JSON>' \
   --selected-groups '0,1' \
   --exchange-rate 5.5 \
