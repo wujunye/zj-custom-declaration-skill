@@ -77,7 +77,7 @@ SAMPLE_ITEMS = [
 
 # Declaration test needs unit_1/unit_2 in KB; IV/PL and contract don't
 SAMPLE_KB = {
-    "AG-TILE-3030-9P": {
+    "人造草坪拼接地板": {
         "tariff_code": "3918909000",
         "english_name": "Artificial Grass Interlocking Floor Tiles",
         "declaration_elements": "0|0|塑料|人造草坪拼接地板|无品牌|无型号",
@@ -85,7 +85,7 @@ SAMPLE_KB = {
         "unit_1": "千克",
         "unit_2": "",  # empty → fallback to contract unit "件"
     },
-    "PG-FENCE-6040": {
+    "塑料草坪围栏": {
         "tariff_code": "3926909090",
         "english_name": "Plastic Grass Fence Panel",
         "declaration_elements": "0|0|塑料|塑料草坪围栏|无品牌|无型号",
@@ -93,7 +93,7 @@ SAMPLE_KB = {
         "unit_1": "千克",
         "unit_2": "件",
     },
-    "AP-WALL-4060": {
+    "仿真植物墙装饰": {
         "tariff_code": "6702100000",
         "english_name": "Artificial Plant Wall Decor",
         "declaration_elements": "0|0|塑料|仿真植物墙|无品牌|无型号",
@@ -304,7 +304,7 @@ class TestDeclaration:
         row = 20
         for idx, item in enumerate(SAMPLE_ITEMS, 1):
             sku = sku_key(item)
-            kb_entry = SAMPLE_KB[sku]
+            kb_entry = SAMPLE_KB[item["name_cn"]]
             contract_unit = item["unit"]
             u1 = kb_entry["unit_1"] or "千克"
             u2 = kb_entry["unit_2"] or contract_unit
@@ -462,14 +462,14 @@ class TestIvPl:
             expected_total_usd = cnf_total_rmb / EXCHANGE_RATE
 
             assert iv.cell(row=row, column=1).value == idx
-            assert str(iv.cell(row=row, column=2).value) == SAMPLE_KB[sku]["tariff_code"]
-            assert iv.cell(row=row, column=3).value == SAMPLE_KB[sku]["english_name"]
+            assert str(iv.cell(row=row, column=2).value) == SAMPLE_KB[item["name_cn"]]["tariff_code"]
+            assert iv.cell(row=row, column=3).value == SAMPLE_KB[item["name_cn"]]["english_name"]
             assert iv.cell(row=row, column=4).value == qty
             assert iv.cell(row=row, column=5).value == "PC(S)"
             assert abs(iv.cell(row=row, column=6).value - expected_unit_usd) < 0.01
             assert iv.cell(row=row, column=7).value == "USD"
             assert abs(iv.cell(row=row, column=8).value - expected_total_usd) < 0.01
-            assert iv.cell(row=row, column=9).value == SAMPLE_KB[sku]["material"]
+            assert iv.cell(row=row, column=9).value == SAMPLE_KB[item["name_cn"]]["material"]
 
             total_usd_check += expected_total_usd
             total_qty_check += qty
@@ -535,8 +535,8 @@ class TestIvPl:
             volume = (l * w * h / 1_000_000) * boxes
 
             assert pl.cell(row=row, column=1).value == idx
-            assert str(pl.cell(row=row, column=2).value) == SAMPLE_KB[sku]["tariff_code"]
-            assert pl.cell(row=row, column=3).value == SAMPLE_KB[sku]["english_name"]
+            assert str(pl.cell(row=row, column=2).value) == SAMPLE_KB[item["name_cn"]]["tariff_code"]
+            assert pl.cell(row=row, column=3).value == SAMPLE_KB[item["name_cn"]]["english_name"]
             assert pl.cell(row=row, column=4).value == qty
             assert pl.cell(row=row, column=4).font.name == "宋体"
             assert pl.cell(row=row, column=4).font.size == 14
@@ -656,7 +656,7 @@ class TestExportContract:
             # Name (CN + EN from KB)
             name_val = ws.cell(row=row, column=1).value
             assert item["name_cn"] in str(name_val)
-            kb_en = SAMPLE_KB[sku]["english_name"]
+            kb_en = SAMPLE_KB[item["name_cn"]]["english_name"]
             assert kb_en in str(name_val)
 
             assert ws.cell(row=row, column=3).value == item["spec"]

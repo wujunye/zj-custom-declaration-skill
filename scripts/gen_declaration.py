@@ -34,8 +34,9 @@ def gen_declaration(
     warnings = []
 
     def _info(sku: str, item: dict) -> dict:
-        if sku in kb:
-            return kb[sku]
+        name_cn = item.get('name_cn', '')
+        if name_cn in kb:
+            return kb[name_cn]
         return {
             'tariff_code': '',
             'english_name': '',

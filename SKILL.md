@@ -55,7 +55,7 @@ pip install xlrd openpyxl --break-system-packages -q
   }
 }
 ```
-其中键名为采购合同中的产品中文名（name_cn）或SKU编号，需与采购合同解析结果中的 `sku_key` 一致。
+其中键名为采购合同中的产品中文名（name_cn），需与采购合同解析结果中的 `name_cn` 字段一致。
 
 **产品名称来源规则：**
 - **中文名（name_cn）**：从采购合同A列解析。若单元格内有换行则取第一行，无换行则取整个名称。

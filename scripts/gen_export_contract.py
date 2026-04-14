@@ -194,7 +194,7 @@ def gen_export_contract(
         cnf_unit = cnf_total / qty if qty > 0 else 0
 
         name_cn = item.get('name_cn', '')
-        kb_info = kb.get(sku, {})
+        kb_info = kb.get(item.get('name_cn', ''), {})
         name_en = kb_info.get('english_name', '')
 
         # Helper to set data cell with border
