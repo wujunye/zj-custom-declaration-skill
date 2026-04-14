@@ -110,18 +110,17 @@ def find_header_row(sheet, is_openpyxl):
 
 def parse_product_name(name_str):
     """
-    Parse product name that may contain Chinese and English separated by newline.
-    Returns (name_cn, name_en) tuple.
+    Parse product name from purchase contract.
+    If the cell contains a newline, take the first line (Chinese name only).
+    English name comes from the knowledge base, not from the contract.
+    Returns name_cn string.
     """
     if not name_str:
-        return "", ""
+        return ""
 
-    # Handle newline or \n in string
+    # Take the first line only (Chinese name); ignore anything after newline
     parts = str(name_str).split('\n')
-    name_cn = parts[0].strip() if parts else ""
-    name_en = parts[1].strip() if len(parts) > 1 else ""
-
-    return name_cn, name_en
+    return parts[0].strip()
 
 
 def parse_purchase_contract(input_file, output_file=None):
@@ -178,8 +177,8 @@ def parse_purchase_contract(input_file, output_file=None):
             if not name:
                 continue
 
-            # Parse product name
-            name_cn, name_en = parse_product_name(name)
+            # Parse product name (Chinese only; English comes from knowledge base)
+            name_cn = parse_product_name(name)
 
             # Parse package size
             package_size_cm = parse_package_size(package_size)
@@ -187,7 +186,6 @@ def parse_purchase_contract(input_file, output_file=None):
             # Build item object
             item = {
                 "name_cn": name_cn,
-                "name_en": name_en,
                 "spec": str(spec).strip() if spec else "",
                 "fba_sku": str(fba_sku).strip() if fba_sku else "",
                 "unit": str(unit).strip() if unit else "",

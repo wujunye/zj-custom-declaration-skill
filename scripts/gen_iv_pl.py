@@ -44,7 +44,7 @@ def gen_iv_pl(
             return kb[sku]
         return {
             'tariff_code': '',
-            'english_name': item.get('name_en', ''),
+            'english_name': '',
             'declaration_elements': '0|0|塑料|塑料草坪|无品牌|无型号',
             'material': 'plastic',
         }
@@ -315,7 +315,7 @@ def _fill_iv(ws, items, kb, cno, tq, ta, ship_alloc, rate, info_fn):
         c2.alignment = _al_cwc
         c2.border = _border_all
 
-        c3 = ws.cell(row=row, column=3, value=info['english_name'] or item.get('name_en', ''))
+        c3 = ws.cell(row=row, column=3, value=info['english_name'])
         c3.font = Font(name='Arial', size=12)
         c3.alignment = _al_cwc
         c3.border = _border_all
@@ -724,7 +724,7 @@ def _fill_pl(ws, items, kb, cno, tq, info_fn):
         c2.alignment = _al_cwc
         c2.border = _border_all
 
-        c3 = ws.cell(row=row, column=3, value=info['english_name'] or item.get('name_en', ''))
+        c3 = ws.cell(row=row, column=3, value=info['english_name'])
         c3.font = Font(name='Arial', size=12)
         c3.alignment = _al_cwc
         c3.border = _border_all

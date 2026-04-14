@@ -38,7 +38,7 @@ def gen_declaration(
             return kb[sku]
         return {
             'tariff_code': '',
-            'english_name': item.get('name_en', ''),
+            'english_name': '',
             'declaration_elements': '0|0|塑料|塑料草坪|无品牌|无型号',
             'material': 'plastic',
             'unit_1': '',
