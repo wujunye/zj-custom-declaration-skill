@@ -594,21 +594,21 @@ class TestExportContract:
 
     def test_contract_number(self, export_contract_wb):
         ws = export_contract_wb[0].active
-        assert ws["I2"].value == CNO
+        assert ws["H2"].value == CNO
 
     def test_date(self, export_contract_wb):
         ws = export_contract_wb[0].active
-        assert ws["D3"].value == "2026-03-23"
+        assert ws["C3"].value == "2026-03-23"
 
     def test_supplier_buyer(self, export_contract_wb):
         ws = export_contract_wb[0].active
-        assert ws["D4"].value == "义乌市绿美工艺品有限公司"
-        assert ws["I4"].value == "深圳市艾进贸易有限公司"
+        assert ws["C4"].value == "义乌市绿美工艺品有限公司"
+        assert ws["H4"].value == "深圳市艾进贸易有限公司"
 
     def test_header_labels(self, export_contract_wb):
         ws = export_contract_wb[0].active
         assert ws["A5"].value == "地址："
-        assert ws["H5"].value == "地址："
+        assert ws["G5"].value == "地址："
         assert ws["A6"].value == "联系人："
         assert ws["A7"].value == "电话："
 
@@ -619,8 +619,9 @@ class TestExportContract:
     def test_column_headers(self, export_contract_wb):
         ws = export_contract_wb[0].active
         expected = [
-            "产品名称", "产品图片", "规格型号", "FBA SKU", "单位", "数量",
-            "箱率", "含税单价/元", "包装尺寸/CM", "外箱净重/KG", "外箱毛重/KG", "总额/元",
+            "产品名称", "FNSKU", "规格型号", "单位", "数量",
+            "箱率", "含税单价/元", "包装尺寸/CM", "外箱净重/KG",
+            "外箱毛重/KG", "总额/元",
         ]
         for c, h in enumerate(expected, 1):
             assert ws.cell(row=11, column=c).value == h
@@ -631,16 +632,16 @@ class TestExportContract:
         assert h1.border.top.style == "medium"
         assert h1.border.bottom.style == "medium"
         assert h1.border.left.style == "medium"
-        h12 = ws.cell(row=11, column=12)
-        assert h12.border.right.style == "medium"
+        h11 = ws.cell(row=11, column=11)
+        assert h11.border.right.style == "medium"
 
     def test_right_side_headers(self, export_contract_wb):
         ws = export_contract_wb[0].active
-        assert ws.cell(row=11, column=15).value == "实重"
-        assert ws.cell(row=11, column=16).value == "体积重"
-        assert ws.cell(row=11, column=17).value == "海运费平摊"
-        assert ws.cell(row=11, column=18).value == "C&F总价"
-        assert ws.cell(row=11, column=19).value == "C&F单价"
+        assert ws.cell(row=11, column=14).value == "实重"
+        assert ws.cell(row=11, column=15).value == "体积重"
+        assert ws.cell(row=11, column=16).value == "海运费平摊"
+        assert ws.cell(row=11, column=17).value == "C&F总价"
+        assert ws.cell(row=11, column=18).value == "C&F单价"
 
     def test_item_data_rows(self, export_contract_wb):
         ws = export_contract_wb[0].active
@@ -652,49 +653,49 @@ class TestExportContract:
             qty = TQ[sku]
             amt = TA[sku]
 
-            # Name (CN + EN from KB)
+            # Name (CN only — matches purchase contract)
             name_val = ws.cell(row=row, column=1).value
-            assert item["name_cn"] in str(name_val)
-            kb_en = SAMPLE_KB[item["name_cn"]]["english_name"]
-            assert kb_en in str(name_val)
+            assert name_val == item["name_cn"]
 
+            assert ws.cell(row=row, column=2).value == sku
             assert ws.cell(row=row, column=3).value == item["spec"]
-            assert ws.cell(row=row, column=4).value == sku
-            assert ws.cell(row=row, column=5).value == item["unit"]
-            assert ws.cell(row=row, column=6).value == qty
-            assert ws.cell(row=row, column=7).value == item["packing_rate"]
+            assert ws.cell(row=row, column=4).value == item["unit"]
+            assert ws.cell(row=row, column=5).value == qty
+            assert ws.cell(row=row, column=6).value == item["packing_rate"]
 
             # Unit price
             expected_up = round(amt / qty, 2)
-            assert abs(ws.cell(row=row, column=8).value - expected_up) < 0.01
+            assert abs(ws.cell(row=row, column=7).value - expected_up) < 0.01
 
             # Package size
             l, w, h = item["package_size_cm"]
-            assert ws.cell(row=row, column=9).value == f"{int(l)}*{int(w)}*{int(h)}"
+            def _fmt(x):
+                return str(int(x)) if float(x).is_integer() else str(x)
+            assert ws.cell(row=row, column=8).value == f"{_fmt(l)}*{_fmt(w)}*{_fmt(h)}"
 
-            assert ws.cell(row=row, column=10).value == item["net_weight_kg"]
-            assert ws.cell(row=row, column=11).value == item["gross_weight_kg"]
-            assert abs(ws.cell(row=row, column=12).value - round(amt, 2)) < 0.01
+            assert ws.cell(row=row, column=9).value == item["net_weight_kg"]
+            assert ws.cell(row=row, column=10).value == item["gross_weight_kg"]
+            assert abs(ws.cell(row=row, column=11).value - round(amt, 2)) < 0.01
 
             # Borders
             d1 = ws.cell(row=row, column=1)
             assert d1.border.top.style == "medium"
             assert d1.border.bottom.style == "thin"
             assert d1.border.left.style == "medium"
-            d12 = ws.cell(row=row, column=12)
-            assert d12.border.right.style == "medium"
+            d11 = ws.cell(row=row, column=11)
+            assert d11.border.right.style == "medium"
 
             # Alignment
             assert d1.alignment.horizontal == "center"
             assert d1.alignment.vertical == "center"
             assert d1.alignment.wrap_text is True
 
-            # Right-side calculations
-            assert ws.cell(row=row, column=15).value > 0  # real weight
-            assert ws.cell(row=row, column=16).value > 0  # volume weight
-            assert ws.cell(row=row, column=17).value > 0  # shipping alloc
-            assert ws.cell(row=row, column=18).value > 0  # C&F total
-            assert ws.cell(row=row, column=19).value > 0  # C&F unit
+            # Right-side calculations (cols 14..18)
+            assert ws.cell(row=row, column=14).value > 0  # real weight
+            assert ws.cell(row=row, column=15).value > 0  # volume weight
+            assert ws.cell(row=row, column=16).value > 0  # shipping alloc
+            assert ws.cell(row=row, column=17).value > 0  # C&F total
+            assert ws.cell(row=row, column=18).value > 0  # C&F unit
 
             sum_qty += qty
             sum_amt += amt
@@ -707,20 +708,20 @@ class TestExportContract:
         t1 = ws.cell(row=row, column=1)
         assert t1.border.top.style == "medium"
         assert t1.border.left.style == "medium"
-        assert ws.cell(row=row, column=14).value == "总重"
-        assert ws.cell(row=row, column=15).value == round(TOTAL_GROSS, 1)
+        assert ws.cell(row=row, column=13).value == "总重"
+        assert ws.cell(row=row, column=14).value == round(TOTAL_GROSS, 1)
 
     def test_capital_total_row(self, export_contract_wb):
         ws = export_contract_wb[0].active
         row = 12 + len(SAMPLE_ITEMS) + 1  # 大写合计 row
         assert ws.cell(row=row, column=1).value == "大写合计"
-        assert ws.cell(row=row, column=14).value == "总海运费"
-        assert ws.cell(row=row, column=15).value == round(TOTAL_SHIP, 2)
+        assert ws.cell(row=row, column=13).value == "总海运费"
+        assert ws.cell(row=row, column=14).value == round(TOTAL_SHIP, 2)
 
     def test_empty_bordered_row(self, export_contract_wb):
         ws = export_contract_wb[0].active
         row = 12 + len(SAMPLE_ITEMS) + 2  # empty bordered row
-        for ci in range(1, 13):
+        for ci in range(1, 12):
             assert ws.cell(row=row, column=ci).border.top.style == "medium"
 
     def test_grand_total_row(self, export_contract_wb):
@@ -728,10 +729,10 @@ class TestExportContract:
         row = 12 + len(SAMPLE_ITEMS) + 3  # 共计 row
         assert ws.cell(row=row, column=1).value == "共计"
         sum_amt = sum(TA.values())
-        assert abs(ws.cell(row=row, column=12).value - round(sum_amt, 2)) < 0.01
-        g12 = ws.cell(row=row, column=12)
-        assert g12.border.bottom.style == "medium"
-        assert g12.border.right.style == "medium"
+        assert abs(ws.cell(row=row, column=11).value - round(sum_amt, 2)) < 0.01
+        g11 = ws.cell(row=row, column=11)
+        assert g11.border.bottom.style == "medium"
+        assert g11.border.right.style == "medium"
 
     def test_row_heights(self, export_contract_wb):
         ws = export_contract_wb[0].active
