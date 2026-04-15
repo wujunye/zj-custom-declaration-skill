@@ -73,7 +73,7 @@ FBA 箱单识别依赖 OpenRouter，API key 已在 `scripts/parse_fba_pdf_llm.py
 #### 2a. 解析采购合同
 
 ```bash
-python {baseDir}/scripts/parse_purchase_contract.py <采购合同路径> --output /tmp/purchase_contract.json
+python {baseDir}/scripts/parse_purchase_contract_llm.py <采购合同路径> --output /tmp/purchase_contract.json
 ```
 
 输出JSON结构：
