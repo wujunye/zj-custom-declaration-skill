@@ -220,7 +220,7 @@ class CustomsDeclarationGenerator:
             f3, decl_warnings = gen_declaration(
                 items=self.items, contract=self.contract, kb=self.kb,
                 cno=cno, suffix=suffix, tq=tq, ta=ta, ship_alloc=sa,
-                total_ship=total_ship, rate=self.rate,
+                rate=self.rate,
                 price_term=self.price_term, out_dir=self.out_dir,
             )
             files.append(os.path.basename(f3))

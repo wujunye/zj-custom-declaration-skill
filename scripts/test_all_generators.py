@@ -201,7 +201,6 @@ def declaration_wb(out_dir):
         tq=TQ,
         ta=TA,
         ship_alloc=SHIP_ALLOC,
-        total_ship=TOTAL_SHIP,
         rate=EXCHANGE_RATE,
         price_term="CNF",
         out_dir=out_dir,
@@ -290,7 +289,7 @@ class TestDeclaration:
 
     def test_shipping_cost_usd(self, declaration_wb):
         ws = declaration_wb[0].active
-        expected = round(TOTAL_SHIP / EXCHANGE_RATE, 2)
+        expected = round(sum(SHIP_ALLOC.values()) / EXCHANGE_RATE, 2)
         assert ws["L12"].value == expected
 
     def test_totals_row12(self, declaration_wb):

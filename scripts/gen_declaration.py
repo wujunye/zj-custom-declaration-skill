@@ -21,7 +21,6 @@ def gen_declaration(
     tq: Dict[str, int],
     ta: Dict[str, float],
     ship_alloc: Dict[str, float],
-    total_ship: float,
     rate: float,
     price_term: str,
     out_dir: str,
@@ -500,7 +499,8 @@ def gen_declaration(
     ws['K12'].alignment = label_align
     ws['K12'].border = Border(bottom=thin_side, left=thin_side)
 
-    ws['L12'] = round(total_ship / rate, 2)
+    ticket_ship = sum(ship_alloc.values())
+    ws['L12'] = round(ticket_ship / rate, 2)
     ws['L12'].font = value_font
     ws['L12'].alignment = Alignment(horizontal='center', vertical='center')
     ws['L12'].border = Border(bottom=thin_side, right=thin_side)
