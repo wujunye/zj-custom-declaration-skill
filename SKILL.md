@@ -19,8 +19,11 @@ description: |
 
 运行脚本前确保安装了依赖：
 ```bash
-pip install xlrd openpyxl --break-system-packages -q
+pip install xlrd openpyxl openai pdf2image Pillow --break-system-packages -q
+# pdf2image 需要系统安装 poppler：brew install poppler
 ```
+
+FBA 箱单识别依赖 OpenRouter，API key 已在 `scripts/parse_fba_pdf_llm.py` 顶部配置；如需覆盖可设置 `OPENROUTER_API_KEY` 环境变量或传 `--api-key`。
 
 ## 完整流程
 
@@ -101,11 +104,16 @@ python {baseDir}/scripts/parse_purchase_contract.py <采购合同路径> --outpu
 
 #### 2b. 解析FBA货件PDF
 
+使用 `parse_fba_pdf_llm.py`，它基于 OpenRouter GPT-5.4 视觉识别。**每次只处理一个 PDF**；若文件夹中有多个 FBA 箱单，对每个 PDF 循环调用并把 `shipments` 合并、重建 `matrix`。
+
+单个 PDF：
 ```bash
-python {baseDir}/scripts/parse_fba_pdf.py <PDF文件夹路径> --output /tmp/fba_shipments.json
+python {baseDir}/scripts/parse_fba_pdf_llm.py <单个PDF路径> --output /tmp/fba_shipment_<warehouse>.json
 ```
 
-输出JSON结构：
+脚本会并行（最多 20 个并发）把每页标签图片发给 LLM，带 rate-limit 重试。
+
+单 PDF 输出结构（含每页原始识别结果 `pages` 字段，便于核对）：
 ```json
 {
   "shipments": [
@@ -117,9 +125,24 @@ python {baseDir}/scripts/parse_fba_pdf.py <PDF文件夹路径> --output /tmp/fba
       "sku_breakdown": [
         {"sku": "PTR220001-P", "boxes": 5, "qty_per_box": 25, "total_qty": 125},
         {"sku": "PTR220002-P", "boxes": 3, "qty_per_box": 16, "total_qty": 48}
+      ],
+      "pages": [
+        {"page_number": 1, "box_number": 1, "total_boxes": 14, "warehouse_code": "MDW2",
+         "address": "...", "sku": "PTR220001-P", "qty_per_box": 25}
       ]
     }
   ],
+  "matrix": {
+    "PTR220001-P": {"MDW2": 125},
+    "PTR220002-P": {"MDW2": 48}
+  }
+}
+```
+
+多 PDF 合并为 `/tmp/fba_shipments.json` 后再进入下一步，格式与上面一致但 `shipments` 含多条、`matrix` 覆盖所有仓库：
+```json
+{
+  "shipments": [ {...MDW2}, {...AVP1}, {...PSP3}, ... ],
   "matrix": {
     "PTR220001-P": {"MDW2": 125, "AVP1": 50, "PSP3": 25, "SCK4": 25, "RDU2": 25},
     "PTR220002-P": {"MDW2": 48, "AVP1": 80, "PSP3": 64, "SCK4": 96, "RDU2": 112}
