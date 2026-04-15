@@ -1,3 +1,5 @@
 .claude/
 .pytest_cache/
 output/*
+**/.DS_Store
+**/__pycache__/
