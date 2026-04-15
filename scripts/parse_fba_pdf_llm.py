@@ -1,25 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Parse a single Amazon FBA shipment PDF using OpenRouter (GPT-5.4) vision.
+Parse a single Amazon FBA / BOXSTAR shipment PDF using OpenRouter (GPT-5.4).
 
-Each page of the PDF is a single-box label. We render every page to a PNG,
-send it to the LLM in parallel (max 20 concurrent), and ask the model to
-extract the structured fields. Results are aggregated into the JSON schema
-consumed by scripts/generate_all.py: { shipments: [...], matrix: {...} }.
+Each page of the PDF is a single-box label. We extract the raw text of every
+page with pdfplumber, send the text (not an image) to the LLM in parallel
+(max 20 concurrent), and ask the model to extract the structured fields.
+Results are aggregated into the JSON schema consumed by
+scripts/generate_all.py: { shipments: [...], matrix: {...} }.
+
+Text-in is ~3-4x cheaper than image-in for these labels and avoids OCR
+mistakes on CJK addresses / SKUs.
 
 Dependencies:
-    pip install openai pdf2image Pillow --break-system-packages -q
-    # pdf2image requires poppler (brew install poppler)
+    pip install openai --break-system-packages -q
+    # pdftotext is from poppler (brew install poppler)
 """
 
 import argparse
-import base64
-import io
 import json
 import os
 import random
 import re
+import shutil
+import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -34,10 +38,9 @@ MAX_CONCURRENCY = 20
 MAX_RETRIES = 6           # retries on rate-limit / transient failures
 RETRY_BASE_DELAY = 2.0    # seconds; exponential backoff with jitter
 REQUEST_TIMEOUT = 120     # seconds per request
-RENDER_DPI = 200          # rasterization resolution
 
 SYSTEM_PROMPT = """你是识别跨境电商分仓货件箱单标签的专家。
-用户给你一张 PDF 单页截图，这一页对应**一个纸箱**的发货标签，同时会告诉你该 PDF 的**文件名**（文件名里有时包含仓库代码，见下文）。
+用户给你**一页箱单标签的纯文本**（由 poppler 的 `pdftotext -layout` 抽出，保留了原始的版面对齐——**同一行里的多栏内容用大段空格水平分开**，栏目边界视觉上清晰可辨）。这一页对应**一个纸箱**。同时用户会给你该 PDF 的**文件名**（文件名里有时包含仓库代码，见下文）。
 你必须只输出一个 JSON 对象，不要解释、不要 markdown 代码块。
 
 ============================================================
@@ -48,40 +51,71 @@ Part 1. 通用逻辑——每种标签都要找的 6 个字段
 
 - `box_number` (int)：当前箱的序号（第几箱）。
 - `total_boxes` (int)：本票一共多少箱。通常和 box_number 出现在同一行，形如 "N / M"、"N of M"、"N，共 M 个"。
-- `warehouse_code` (str | null)：目的仓库的代码。**只有在标签本身或文件名里明确出现时才填**。找不到就填 null，**绝不从地址/城市/邮编推断**。
+- `warehouse_code` (str | null)：目的仓库的代码。**只有在文本里或文件名里明确出现时才填**。找不到就填 null，**绝不从地址/城市/邮编推断**。
 - `address` (str | null)：收货地址（通常是美国地址）。有就拼成一行（用英文逗号+空格分隔），没有就 null。
-- `sku` (str)：这一箱装的 SKU。SKU 通常是**全大写字母+数字，可能带 `-` 或小写后缀**，例如 `PTR220001-P`、`BPBBB25000MS`、`BPBBB25000LS-a`。SKU 一般会在条码下方再次出现，可用于交叉验证。
+- `sku` (str)：这一箱装的 SKU。SKU 通常是**全大写字母+数字，可能带 `-` 或小写后缀**，例如 `PTR220001-P`、`BPBBB25000MS`、`BPBBB25000LS-a`。
 - `qty_per_box` (int)：**这一个箱子里**该 SKU 的件数（不是整票总数！）。
 
 ============================================================
-Part 2. 已见过的版面
+Part 2. 已见过的版面（基于抽出的纯文本）
 ============================================================
 
+ℹ️ 提示：由于使用了 `pdftotext -layout`，页面中**左右并排的两栏**（"目的地"栏 vs "发货地"栏）在文本里会处于同一行但被**大段空格**隔开。你可以把每行按视觉位置拆成左半段和右半段——只关心**左半段的"目的地"内容**，忽略右半段里的 `shenzhenshi tangmumao...` / `Guangdong - 深圳 ...` / `南山街道...` / `中国` 等中国发货方内容。
+
 ▶ 版面 A：亚马逊 FBA 标签
-  - 页眉左上有大号 `FBA` logo；右上一行 `纸箱编号 N，共 M 个纸箱 - XX磅`
-    → `box_number = N`，`total_boxes = M`。
-  - 左侧"目的地:"下第一行是 `FBA: shenzhenshi tangmumao dian shang you xian gong si`。
-  - 紧跟着有两种形式：
-    · **A1**：下一行是一个独立的 3–4 位大写字母/数字代码（如 `MDW2`），这就是 `warehouse_code`，再下面才是美国地址。
-    · **A2**：下一行直接是 `Amazon.com Services, Inc.` / `Amazon.com Services LLC` 之类的公司名，标签上**没有**仓库代码。
-      这种情况下请**查看用户给的文件名**——FBA 文件名通常形如 `FBA199DNP1K1-AVP1.pdf`，末尾 `-XXXX.pdf` 之前的部分就是仓库代码。
-      如果文件名里能提取出这个代码（全大写字母/数字，3–4 位）就用它；否则 `warehouse_code = null`。
-  - 美国地址通常是 3–4 行（街道/城市、州 邮编/"美国"），拼成一行；**不要**包含 "FBA:" 那行、A1 型的仓库代码行、公司名行、"美国" 那行。
-    示例："250 EMERALD DR, Joliet, IL 60433-3280" 或 "550 Oak Ridge Road, Hazle Township, PA 18202-9361"
-  - 中部条码下方有 "Single SKU" 小块：下一行是 `sku`（如 `PTR220001-P`），再下一行 `数量 X` → `qty_per_box = X`，再下面的 `A-25` 是库位，忽略。
-  - 忽略：`FBA` logo、发货地块（`Guangdong - 深圳 ...` / 南山街道 ... / 中国）、条码本身、条码下方的 `FBA...U000001` 长串、`Created: ...` 时间戳、`请不要遮住此标签`、左上 `纸箱指纹-xxx`、右上角 `XX磅`。
+  抽出的文本大致长这样（示例，空格原样保留以保持对齐）：
+    ```
+    FBA                                                       纸箱编号 1，共 14 个纸箱 - 34 磅
+    目的地：                                                     发货地：
+    FBA: shenzhenshi tangmumao dian shang you xian gong si   shenzhenshi tangmumao dian shang you xian
+    MDW2                                                     Guangdong - 深圳 - 518052
+    250 EMERALD DR                                           南山街道荔湾社区前海路0101号丽湾商务公寓A-2519
+    Joliet, IL 60433-3280                                    中国
+    美国
+    塑料稻草-146                                                             Created: 2026/03/24 01:10 CDT (-05)
+
+                        FBA199DN1ZLPU000001
+
+                                                                  Single SKU
+                                                                  PTR220001-P
+                                                                      数量 25
+                                                                         A-25
+
+                                              请不要遮住此标签
+    ```
+  - 第 1 行 `纸箱编号 N，共 M 个纸箱` → `box_number=N`, `total_boxes=M`。
+  - `FBA: shenzhenshi ...` 那一行（左半段）是卖家名，忽略。
+  - 紧接着（目的地块第 2 行）有两种形式：
+    · **A1**：该行**左半段**就是一个独立的 3–4 位大写字母/数字代码（如 `MDW2`），右半段是 `Guangdong - 深圳 ...`（忽略）。这就是 `warehouse_code`。下面几行的左半段是美国地址。
+    · **A2**：该行**左半段**是 `Amazon.com Services, Inc.` / `Amazon.com Services LLC` 之类的公司名，标签上**没有**仓库代码行。这时从**文件名**里取仓库代码——FBA 文件名通常形如 `FBA199DNP1K1-AVP1.pdf`，末尾 `-XXXX.pdf` 之前的部分（`AVP1`）就是仓库代码。能取到就用它，否则 `warehouse_code=null`。
+  - 美国地址：紧跟在"仓库代码行"（A1）或"Amazon 公司名行"（A2）之后的 2 行的**左半段**，拼成一行，例如：
+      A1 → "250 EMERALD DR, Joliet, IL 60433-3280"
+      A2 → "550 Oak Ridge Road, Hazle Township, PA 18202-9361"
+    不要把 "FBA: ..." 那行、仓库代码、"Amazon.com Services" 公司名、"美国" 单独一行放进地址。
+  - SKU / 数量：在 `Single SKU` 之后紧跟着的那行就是 `sku`（如 `PTR220001-P`），再下一行 `数量 X` → `qty_per_box=X`，再下面 `A-25` 是库位，忽略。
+  - 忽略的其它内容：`塑料稻草-xxx`、`Created: ...`、`FBA...U000001`（条码下方长串）、`请不要遮住此标签`、右上角 `XX磅`、右半段所有发货地内容。
 
 ▶ 版面 B：BOXSTAR（置闰）标签
-  - 页眉左上 `Inbound`，右上 `Box N of M` → `box_number=N`, `total_boxes=M`。
-  - 下面一行 `WH: BOX STAR (XXXXXX)`，**括号里的代码就是 `warehouse_code`**（如 `AFDLA01`），原样大写输出。
-  - 再下一行 `Client: 置闰(7538006)` —— 忽略。
-  - 右上 `SKUs: 1` / `PCS: 1` —— 忽略。
-  - 中部一个 3 列小表格，表头 `SKU | Item Name | Qty`：
-    · `SKU` 列的值 → `sku`（如 `BPBBB25000MS`、`BPBBB25000LS-a`）。
-    · `Item Name` 列是中文品名（如 `黑色宠物床边床中号`）—— 我们**不需要**，忽略。
-    · `Qty` 列的值 → `qty_per_box`。
-  - BOXSTAR 标签**没有美国地址**，`address = null`。
-  - 忽略：下半部分的 `IB...RU` 编号和时间戳、第二个条码及其下方重复的 SKU、`MADE IN CHINA`、二维码。
+  抽出的文本大致长这样（`-layout` 保留了表格列对齐）：
+    ```
+    Inbound                              Box 1 of 120
+
+    WH: BOX STAR (AFDLA01)               SKUs: 1
+    Client: 置闰(7538006)                  PCS: 1
+
+    SKU                      Item Name         Qty
+    BPBBB25000LS-a           黑色宠物床边床大号 1
+
+    IB006260408RT                        2026-04-08 10:09
+
+                    BPBBB25000LS-a           MADE IN CHINA
+    ```
+  - `Box N of M` → `box_number=N`, `total_boxes=M`。
+  - `WH: BOX STAR (XXXXXX)`：**括号里的代码就是 `warehouse_code`**（如 `AFDLA01`），原样大写输出。
+  - `Client: 置闰(...)`、`SKUs: 1`、`PCS: 1`：忽略。
+  - `SKU Item Name Qty` 是表头，下一行是数据行：第一个 token 是 `sku`（如 `BPBBB25000MS`、`BPBBB25000LS-a`），**最后一个** token 是 `qty_per_box`（整数）。中间的中文品名（如 `黑色宠物床边床大号`）忽略。
+  - BOXSTAR 标签**没有美国地址**，`address=null`。
+  - 忽略：`IB...RT` 编号、时间戳、第二次重复出现的 SKU、`MADE IN CHINA`。
 
 ============================================================
 Part 3. 没见过的版面
@@ -91,29 +125,54 @@ Part 3. 没见过的版面
 
 输出 JSON 示例：
 {"box_number": 1, "total_boxes": 14, "warehouse_code": "MDW2", "address": "250 EMERALD DR, Joliet, IL 60433-3280", "sku": "PTR220001-P", "qty_per_box": 25}
-{"box_number": 1, "total_boxes": 141, "warehouse_code": "AFDLA01", "address": null, "sku": "BPBBB25000MS", "qty_per_box": 1}
+{"box_number": 1, "total_boxes": 14, "warehouse_code": "AVP1", "address": "550 Oak Ridge Road, Hazle Township, PA 18202-9361", "sku": "PTR220001-P", "qty_per_box": 25}
+{"box_number": 1, "total_boxes": 120, "warehouse_code": "AFDLA01", "address": null, "sku": "BPBBB25000LS-a", "qty_per_box": 1}
 """
 
-USER_PROMPT_TEMPLATE = "PDF 文件名：{filename}\n请识别这一页箱单标签，按系统指令的 JSON 格式输出。"
+USER_PROMPT_TEMPLATE = """PDF 文件名：{filename}
+
+以下是这一页标签的纯文本（pdfplumber 抽取，原始行顺序保留）：
+----- BEGIN PAGE TEXT -----
+{page_text}
+----- END PAGE TEXT -----
+
+请按系统指令的 JSON 格式输出。"""
 
 
-# --- PDF rendering --------------------------------------------------------
-def render_pdf_pages_to_png(pdf_path: str, dpi: int = RENDER_DPI) -> List[bytes]:
-    """Render every page of a PDF to PNG bytes using pdf2image (poppler)."""
-    try:
-        from pdf2image import convert_from_path
-    except ImportError:
-        print("Error: pdf2image not installed. Run: pip install pdf2image Pillow --break-system-packages",
+# --- PDF text extraction --------------------------------------------------
+def extract_pdf_pages_text(pdf_path: str) -> List[str]:
+    """Extract per-page text via `pdftotext -layout` (poppler).
+
+    Uses reading-order + column-aligned whitespace, which matches what a user
+    gets when selecting-and-copying text in Preview/Chrome. Columns stay
+    visually separated (the destination block and sender block are no longer
+    glued onto the same line).
+
+    Pages are split on the form-feed character (\\f), which pdftotext emits
+    between pages.
+    """
+    if shutil.which("pdftotext") is None:
+        print("Error: pdftotext not found. Install poppler: brew install poppler",
               file=sys.stderr)
         sys.exit(1)
 
-    images = convert_from_path(pdf_path, dpi=dpi)
-    out = []
-    for img in images:
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        out.append(buf.getvalue())
-    return out
+    try:
+        proc = subprocess.run(
+            ["pdftotext", "-layout", "-enc", "UTF-8", pdf_path, "-"],
+            capture_output=True,
+            check=True,
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"Error: pdftotext failed on {pdf_path}: {e.stderr.decode('utf-8', errors='replace')}",
+              file=sys.stderr)
+        sys.exit(1)
+
+    raw = proc.stdout.decode("utf-8", errors="replace")
+    # pdftotext emits a trailing \f; strip it so we don't get an empty page.
+    pages = raw.split("\f")
+    if pages and pages[-1].strip() == "":
+        pages = pages[:-1]
+    return pages
 
 
 # --- LLM call -------------------------------------------------------------
@@ -165,20 +224,12 @@ def _extract_json(text: str) -> Dict:
     return json.loads(m.group(0))
 
 
-def call_llm_for_page(client, page_index: int, png_bytes: bytes, filename: str = "") -> Dict:
-    """Call OpenRouter GPT-5.4 with one page image. Retries on rate limits."""
-    b64 = base64.b64encode(png_bytes).decode("ascii")
-    data_url = f"data:image/png;base64,{b64}"
-
+def call_llm_for_page(client, page_index: int, page_text: str, filename: str = "") -> Dict:
+    """Call OpenRouter GPT-5.4 with the page's extracted text. Retries on rate limits."""
+    user_msg = USER_PROMPT_TEMPLATE.format(filename=filename, page_text=page_text)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {
-            "role": "user",
-            "content": [
-                {"type": "text", "text": USER_PROMPT_TEMPLATE.format(filename=filename)},
-                {"type": "image_url", "image_url": {"url": data_url}},
-            ],
-        },
+        {"role": "user", "content": user_msg},
     ]
 
     last_err: Optional[Exception] = None
@@ -297,9 +348,9 @@ def build_shipment(pdf_path: str, page_results: List[Dict]) -> Dict:
 def parse_pdf_with_llm(pdf_path: str, api_key: Optional[str] = None,
                        concurrency: int = MAX_CONCURRENCY) -> Dict:
     concurrency = max(1, min(concurrency, MAX_CONCURRENCY))
-    print(f"Rendering PDF pages: {pdf_path}", file=sys.stderr)
-    pages_png = render_pdf_pages_to_png(pdf_path)
-    print(f"  {len(pages_png)} page(s); dispatching to {MODEL} (max {concurrency} parallel)",
+    print(f"Extracting PDF text: {pdf_path}", file=sys.stderr)
+    pages_text = extract_pdf_pages_text(pdf_path)
+    print(f"  {len(pages_text)} page(s); dispatching to {MODEL} (max {concurrency} parallel)",
           file=sys.stderr)
 
     client = _get_client(api_key)
@@ -308,8 +359,8 @@ def parse_pdf_with_llm(pdf_path: str, api_key: Optional[str] = None,
     filename = os.path.basename(pdf_path)
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         futures = {
-            pool.submit(call_llm_for_page, client, i, png, filename): i
-            for i, png in enumerate(pages_png)
+            pool.submit(call_llm_for_page, client, i, txt, filename): i
+            for i, txt in enumerate(pages_text)
         }
         for fut in as_completed(futures):
             page_idx = futures[fut]
@@ -336,7 +387,8 @@ def _build_matrix(shipments: List[Dict]) -> Dict[str, Dict[str, int]]:
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Parse FBA shipment PDF(s) via OpenRouter GPT-5.4 vision. "
+        description="Parse FBA / BOXSTAR shipment PDF(s) via OpenRouter GPT-5.4 "
+                    "(text-based; pdfplumber extracts per-page text, LLM extracts fields). "
                     "Accepts a single PDF or a folder containing multiple PDFs."
     )
     ap.add_argument("input_path", help="Single FBA shipment PDF, or a folder of PDFs")
